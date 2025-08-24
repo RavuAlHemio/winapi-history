@@ -1,3 +1,6 @@
+mod ms_cpp_filt;
+
+
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
