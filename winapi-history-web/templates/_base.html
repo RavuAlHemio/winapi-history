@@ -4,6 +4,15 @@
 <meta charset="utf-8" />
 <title>{% block title %}{% endblock %}</title>
 {% block addhead %}
+<style type="text/css">
+body { font-family: sans-serif; }
+li + li { margin-top: 0.2em; }
+@media (prefers-color-scheme: dark) {
+  body { background-color: #001d28; color: #ddd; }
+  a:link { color: #95cde5; }
+  a:visited { color: #c9aacd; }
+}
+</style>
 {% endblock %}
 </head>
 <body>
