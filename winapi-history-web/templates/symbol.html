@@ -1,0 +1,26 @@
+{% extends "_base.html" %}
+
+{% block title %}Symbol {{ symbol.friendly_name_or_generate() }}{% endblock %}
+
+{% block body %}
+<h1>Windows APIs</h1>
+
+<h2>Symbol {{ symbol.friendly_name_or_generate() }}</h2>
+
+<p>Available in the following operating systems:</p>
+
+<ul>
+{% for (os, dlls) in os_dlls %}
+<li>
+  <a class="os" href="../os/{{ os.short_name|urlencode_strict }}">{{ os.long_name }}</a>
+  (
+    {%- for dll in dlls -%}
+      {%- if !loop.first -%}{{ ", " }}{%- endif -%}
+      <a class="dll" href="../dll/{{ dll.path|urlencode_strict }}">{{ dll.path }}</a>
+    {%- endfor -%}
+  )
+</li>
+{% endfor %}
+</ul>
+
+{% endblock %}

@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 
 use clap::Parser;
-use rusqlite::{Connection, OptionalExtension, Params, Statement};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Params, Statement};
 
 
 #[derive(Parser)]
@@ -54,7 +54,13 @@ fn main() {
     let opts = Opts::parse();
 
     // open the SQLite database
-    let mut db = Connection::open(&opts.database_path)
+    let mut db = Connection::open_with_flags(
+        &opts.database_path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE
+            | OpenFlags::SQLITE_OPEN_CREATE
+            | OpenFlags::SQLITE_OPEN_EXRESCODE
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+    )
         .expect("failed to open SQLite database");
 
     // check schema

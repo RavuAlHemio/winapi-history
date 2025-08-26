@@ -1,0 +1,28 @@
+{% extends "_base.html" %}
+
+{% block title %}Windows APIs{% endblock %}
+
+{% block body %}
+<h1>Windows APIs</h1>
+
+<h2>By Operating System</h2>
+
+<p>
+{%- for os in operating_systems -%}
+{%- if !loop.first -%}{{ " &middot; "|safe }}{%- endif -%}
+<a href="os/{{ os.short_name|urlencode_strict }}">{{ os.long_name }}</a>
+{%- endfor -%}
+</p>
+
+<h2>By Function Name</h2>
+
+<p>
+{%- for func_start in func_start_chars -%}
+{%- if !loop.first -%}{{ " &middot; "|safe }}{%- endif -%}
+<a href="funcs/{{ func_start|urlencode_strict }}">{{ func_start }}</a>
+{%- endfor -%}
+{%- if func_start_chars.len() > 0 -%}{{ " &middot; "|safe }}{%- endif -%}
+<a href="funcs/ordinal-only">ordinal-only functions</a>
+</p>
+
+{% endblock %}

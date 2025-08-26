@@ -21,6 +21,8 @@ CREATE TABLE operating_systems
 ( os_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT
 , short_name TEXT NOT NULL UNIQUE
 , long_name TEXT NULL DEFAULT NULL
+, release_date TEXT NULL DEFAULT NULL
+, CHECK (release_date IS NULL OR date(release_date) = release_date)
 );
 
 CREATE TABLE dlls

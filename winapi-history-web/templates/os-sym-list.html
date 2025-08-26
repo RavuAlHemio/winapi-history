@@ -1,0 +1,30 @@
+{% extends "_base.html" %}
+
+{% block title %}{{ os.long_name }} All Symbols{% endblock %}
+
+{% block body %}
+<h1>Windows APIs</h1>
+
+<h2>{{ os.long_name }} All Symbols</h2>
+
+<ul>
+{% for symbol in symbols %}
+<li{%
+  if symbol.dll.secondary_platform
+%} class="sec-plat"{%
+  endif
+%}><a class="sym" href="{%
+  if let Some((dll_name, ordinal)) = symbol.symbol.dll_pair()
+%}../../dll/{{ dll_name|urlencode_strict }}/ordinal/{{ ordinal }}{%
+  else if let Some(raw_name) = symbol.symbol.raw_name()
+%}../../symbol/{{ raw_name|urlencode_strict }}{%
+  endif
+%}">{{ symbol.symbol.friendly_name_or_generate() }}</a>{%
+  if symbol.dll.secondary_platform
+%} (secondary platform){%
+  endif
+%}</li>
+{% endfor %}
+</ul>
+
+{% endblock %}

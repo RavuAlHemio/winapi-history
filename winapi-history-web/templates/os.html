@@ -1,0 +1,20 @@
+{% extends "_base.html" %}
+
+{% block title %}{{ os.long_name }} APIs{% endblock %}
+
+{% block body %}
+<h1>Windows APIs</h1>
+
+<h2>{{ os.long_name }} APIs</h2>
+
+<p><a href="{{ os.short_name }}/all-symbols">the whole list</a></p>
+
+<h3>DLLs</h3>
+
+<ul>
+{% for dll in dlls %}
+<li{% if dll.secondary_platform %} class="sec-plat"{% endif %}><a href="{{ os.short_name }}/dll/{{ dll.path|urlencode_strict }}">{{ dll.path }}</a>{% if dll.secondary_platform %} (secondary platform){% endif %}</li>
+{% endfor %}
+</ul>
+
+{% endblock %}
