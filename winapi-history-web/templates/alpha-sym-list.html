@@ -1,0 +1,18 @@
+{% extends "_base.html" %}
+
+{% block title %}Alphabetical Symbol List{% endblock %}
+
+{% block body %}
+<h1>Windows APIs</h1>
+
+<h2>Alphabetical Symbol List</h2>
+
+<ul>
+{% for symbol in symbols %}
+{% if let Some(raw_name) = symbol.raw_name() %}
+<li><a href="../symbol/{{ raw_name|urlencode_strict }}">{{ symbol.friendly_name_or_generate() }}</a></li>
+{% endif %}
+{% endfor %}
+</ul>
+
+{% endblock %}

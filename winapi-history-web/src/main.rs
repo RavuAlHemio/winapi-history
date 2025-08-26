@@ -46,6 +46,12 @@ struct SymbolTemplate {
     pub os_dlls: Vec<(OperatingSystemPart, Vec<DllPart>)>,
 }
 
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
+#[template(path = "alpha-sym-list.html")]
+struct AlphabeticalSymbolListTemplate {
+    pub symbols: Vec<SymbolPart>,
+}
+
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct OperatingSystemPart {
     pub short_name: String,
@@ -653,6 +659,54 @@ fn symbol_page(sym_raw_name: &str) -> TemplateResponder<SymbolTemplate> {
     TemplateResponder::Template(template)
 }
 
+#[rocket::get("/funcs/<sym_raw_prefix>")]
+fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListTemplate> {
+    let Some(db) = connect_to_database()
+        else { return TemplateResponder::Failure };
+
+    let prefix_len_chars = sym_raw_prefix.chars().count();
+
+    // find those symbols
+    let sym_info_rows_opt = query_database(
+        &db,
+        "
+            SELECT
+                raw_name,
+                friendly_name
+            FROM
+                symbols
+            WHERE
+                raw_name IS NOT NULL
+                AND (
+                    SUBSTR(raw_name, 1, ?1) = ?2
+                    OR SUBSTR(friendly_name, 1, ?1) = ?2
+                )
+            ORDER BY
+                COALESCE(friendly_name, raw_name)
+        ",
+        (prefix_len_chars, sym_raw_prefix),
+        |row| {
+            let raw_name: String = row.get(0)?;
+            let friendly_name: Option<String> = row.get(1)?;
+            let sym_part = SymbolPart::Named {
+                raw_name,
+                friendly_name,
+            };
+            Ok(sym_part)
+        },
+    );
+    let symbols = match sym_info_rows_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(v) => v,
+    };
+
+    let template = AlphabeticalSymbolListTemplate {
+        symbols,
+    };
+    TemplateResponder::Template(template)
+}
+
 
 #[rocket::get("/")]
 fn root() -> TemplateResponder<RootTemplate> {
@@ -736,5 +790,6 @@ fn rocket_launcher() -> _ {
         os_dll_page,
         all_os_symbols,
         symbol_page,
+        funcs_page,
     ])
 }
