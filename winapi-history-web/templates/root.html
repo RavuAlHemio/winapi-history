@@ -21,8 +21,15 @@
 {%- if !loop.first -%}{{ " &middot; "|safe }}{%- endif -%}
 <a href="funcs/{{ func_start|urlencode_strict }}">{{ func_start }}</a>
 {%- endfor -%}
-{%- if func_start_chars.len() > 0 -%}{{ " &middot; "|safe }}{%- endif -%}
-<a href="funcs/ordinal-only">ordinal-only functions</a>
+</p>
+
+<h2>Ordinal-Only Functions by DLL</h2>
+
+<p>
+{%- for ordinal_dll_start in ordinal_dll_start_chars -%}
+{%- if !loop.first -%}{{ " &middot; "|safe }}{%- endif -%}
+<a href="funcs/ordinal-only/{{ ordinal_dll_start|urlencode_strict }}">{{ ordinal_dll_start }}</a>
+{%- endfor -%}
 </p>
 
 <h2>Compare API Surfaces</h2>

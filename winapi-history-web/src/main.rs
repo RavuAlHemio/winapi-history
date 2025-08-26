@@ -26,6 +26,7 @@ const URL_UNRESERVED: &AsciiSet = &NON_ALPHANUMERIC
 struct RootTemplate {
     pub operating_systems: Vec<OperatingSystemPart>,
     pub func_start_chars: Vec<String>,
+    pub ordinal_dll_start_chars: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
@@ -33,6 +34,13 @@ struct RootTemplate {
 struct OsTemplate {
     pub os: OperatingSystemPart,
     pub dlls: Vec<DllPart>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
+#[template(path = "dll.html")]
+struct DllTemplate {
+    pub dll: DllPart,
+    pub symbols_oses: Vec<(SymbolPart, Vec<OperatingSystemPart>)>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
@@ -53,6 +61,7 @@ struct OsDllSymbolListTemplate {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
 #[template(path = "symbol.html")]
 struct SymbolTemplate {
+    pub path_to_root: &'static str,
     pub symbol: SymbolPart,
     pub os_dlls: Vec<(OperatingSystemPart, Vec<DllPart>)>,
 }
@@ -60,6 +69,7 @@ struct SymbolTemplate {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
 #[template(path = "alpha-sym-list.html")]
 struct AlphabeticalSymbolListTemplate {
+    pub path_to_root: &'static str,
     pub symbols: Vec<SymbolPart>,
 }
 
@@ -575,42 +585,7 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
     TemplateResponder::Template(template)
 }
 
-#[rocket::get("/symbol/<sym_raw_name>")]
-fn symbol_page(sym_raw_name: &str) -> TemplateResponder<SymbolTemplate> {
-    let Some(db) = connect_to_database()
-        else { return TemplateResponder::Failure };
-
-    // does this symbol exist? what ID does it have?
-    let sym_info_rows_opt = prepare_and_query_database(
-        &db,
-        "
-            SELECT
-                sym_id,
-                raw_name,
-                friendly_name
-            FROM
-                symbols
-            WHERE
-                raw_name = ?1
-        ",
-        [sym_raw_name],
-        |row| {
-            let sym_id: i64 = row.get(0)?;
-            let raw_name: String = row.get(1)?;
-            let friendly_name: Option<String> = row.get(2)?;
-            let sym_part = SymbolPart::Named {
-                raw_name,
-                friendly_name,
-            };
-            Ok((sym_id, sym_part))
-        },
-    );
-    let (sym_id, sym_part) = match sym_info_rows_opt {
-        None => return TemplateResponder::Failure,
-        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
-        Some(mut v) => v.swap_remove(0),
-    };
-
+fn finish_dlls(db: &Connection, sym_id: i64, sym_part: SymbolPart, path_to_root: &'static str) -> TemplateResponder<SymbolTemplate> {
     let dll_rows_opt = prepare_and_query_database(
         &db,
         "
@@ -686,8 +661,215 @@ fn symbol_page(sym_raw_name: &str) -> TemplateResponder<SymbolTemplate> {
     }
 
     let template = SymbolTemplate {
+        path_to_root,
         symbol: sym_part,
         os_dlls,
+    };
+    TemplateResponder::Template(template)
+}
+
+#[rocket::get("/symbol/<sym_raw_name>")]
+fn symbol_page(sym_raw_name: &str) -> TemplateResponder<SymbolTemplate> {
+    let Some(db) = connect_to_database()
+        else { return TemplateResponder::Failure };
+
+    // does this symbol exist? what ID does it have?
+    let sym_info_rows_opt = prepare_and_query_database(
+        &db,
+        "
+            SELECT
+                sym_id,
+                raw_name,
+                friendly_name
+            FROM
+                symbols
+            WHERE
+                raw_name = ?1
+        ",
+        [sym_raw_name],
+        |row| {
+            let sym_id: i64 = row.get(0)?;
+            let raw_name: String = row.get(1)?;
+            let friendly_name: Option<String> = row.get(2)?;
+            let sym_part = SymbolPart::Named {
+                raw_name,
+                friendly_name,
+            };
+            Ok((sym_id, sym_part))
+        },
+    );
+    let (sym_id, sym_part) = match sym_info_rows_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(mut v) => v.swap_remove(0),
+    };
+
+    finish_dlls(&db, sym_id, sym_part, "../")
+}
+
+#[rocket::get("/symbol/dll/<dll_name>/ordinal/<ordinal>")]
+fn dll_ordinal_symbol_page(dll_name: &str, ordinal: usize) -> TemplateResponder<SymbolTemplate> {
+    let Some(db) = connect_to_database()
+        else { return TemplateResponder::Failure };
+
+    // does this symbol exist? what ID does it have?
+    let sym_info_rows_opt = prepare_and_query_database(
+        &db,
+        "
+            SELECT
+                sym_id,
+                dll_name,
+                ordinal,
+                friendly_name
+            FROM
+                symbols
+            WHERE
+                dll_name = ?1
+                AND ordinal = ?2
+        ",
+        (dll_name, ordinal),
+        |row| {
+            let sym_id: i64 = row.get(0)?;
+            let dll_name: String = row.get(1)?;
+            let ordinal: u64 = row.get(2)?;
+            let friendly_name: Option<String> = row.get(3)?;
+            let sym_part = SymbolPart::DllOrdinal {
+                dll_name,
+                ordinal,
+                friendly_name,
+            };
+            Ok((sym_id, sym_part))
+        },
+    );
+    let (sym_id, sym_part) = match sym_info_rows_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(mut v) => v.swap_remove(0),
+    };
+
+    finish_dlls(&db, sym_id, sym_part, "../../../../")
+}
+
+#[rocket::get("/dll/<dll_name>")]
+fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
+    let Some(db) = connect_to_database()
+        else { return TemplateResponder::Failure };
+
+    // does this DLL exist? what ID does it have?
+    let dll_info_rows_opt = prepare_and_query_database(
+        &db,
+        "
+            SELECT
+                dll_id, path, secondary_platform
+            FROM
+                dlls
+            WHERE
+                path = ?1
+        ",
+        [dll_name],
+        |row| {
+            let dll_id: i64 = row.get(0)?;
+            let path: String = row.get(1)?;
+            let secondary_platform: bool = row.get(2)?;
+            let dll_part = DllPart {
+                path,
+                secondary_platform,
+            };
+            Ok((dll_id, dll_part))
+        },
+    );
+    let (dll_id, dll_part) = match dll_info_rows_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(mut v) => v.swap_remove(0),
+    };
+
+    // find the symbols in the DLL
+    let syms_opt = prepare_and_query_database(
+        &db,
+        "
+            SELECT DISTINCT
+                sym.sym_id,
+                sym.raw_name,
+                COALESCE(sym.friendly_name, sym.raw_name),
+                sym.dll_name,
+                sym.ordinal
+            FROM
+                dlls d
+                INNER JOIN symbol_dll_os sdo
+                    ON sdo.dll_id = d.dll_id
+                INNER JOIN symbols sym
+                    ON sym.sym_id = sdo.sym_id
+            WHERE
+                d.dll_id = ?1
+            ORDER BY
+                2, 3, 4
+        ",
+        [dll_id],
+        |row| {
+            let sym_id: i64 = row.get(0)?;
+            let raw_name: Option<String> = row.get(1)?;
+            let friendly_name: Option<String> = row.get(2)?;
+            let dll_name: Option<String> = row.get(3)?;
+            let ordinal: Option<u64> = row.get(4)?;
+
+            let symbol = if let Some(rn) = raw_name {
+                SymbolPart::Named {
+                    raw_name: rn.clone(),
+                    friendly_name,
+                }
+            } else {
+                SymbolPart::DllOrdinal {
+                    dll_name: dll_name.unwrap(),
+                    ordinal: ordinal.unwrap(),
+                    friendly_name,
+                }
+            };
+            Ok((sym_id, symbol))
+        },
+    );
+    let Some(syms) = syms_opt
+        else { return TemplateResponder::Failure };
+
+    // find the operating systems per symbol
+    const OS_QUERY: &'static str = "
+        SELECT DISTINCT
+            os.short_name,
+            COALESCE(os.long_name, os.short_name)
+        FROM
+            operating_systems os
+            INNER JOIN symbol_dll_os sdo
+                ON sdo.os_id = os.os_id
+        WHERE
+            sdo.sym_id = ?1
+        ORDER BY
+            os.release_date ASC NULLS LAST
+    ";
+    let Some(mut os_statement) = prepare(&db, OS_QUERY)
+        else { return TemplateResponder::Failure };
+
+    let mut symbols_oses = Vec::with_capacity(syms.len());
+    for (sym_id, sym_part) in syms {
+        let oses_opt = query_database(
+            &mut os_statement,
+            [sym_id],
+            |row| {
+                let short_name: String = row.get(0)?;
+                let long_name: String = row.get(1)?;
+                Ok(OperatingSystemPart {
+                    short_name,
+                    long_name,
+                })
+            },
+        );
+        let Some(oses) = oses_opt
+            else { return TemplateResponder::Failure };
+        symbols_oses.push((sym_part, oses));
+    }
+
+    let template = DllTemplate {
+        dll: dll_part,
+        symbols_oses,
     };
     TemplateResponder::Template(template)
 }
@@ -735,6 +917,57 @@ fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListT
     };
 
     let template = AlphabeticalSymbolListTemplate {
+        path_to_root: "../",
+        symbols,
+    };
+    TemplateResponder::Template(template)
+}
+
+#[rocket::get("/funcs/ordinal-only/<dll_path_prefix>")]
+fn ordinal_only_funcs_page(dll_path_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListTemplate> {
+    let Some(db) = connect_to_database()
+        else { return TemplateResponder::Failure };
+
+    let dll_path_prefix_len = dll_path_prefix.chars().count();
+
+    // find the symbols
+    let sym_info_rows_opt = prepare_and_query_database(
+        &db,
+        "
+            SELECT
+                dll_name,
+                ordinal,
+                friendly_name
+            FROM
+                symbols
+            WHERE
+                dll_name IS NOT NULL
+                AND SUBSTR(dll_name, 1, ?1) = ?2
+                AND ordinal IS NOT NULL
+            ORDER BY
+                3, 1, 2
+        ",
+        (dll_path_prefix_len, dll_path_prefix),
+        |row| {
+            let dll_name: String = row.get(0)?;
+            let ordinal: u64 = row.get(1)?;
+            let friendly_name: Option<String> = row.get(2)?;
+            let sym_part = SymbolPart::DllOrdinal {
+                dll_name,
+                ordinal,
+                friendly_name,
+            };
+            Ok(sym_part)
+        },
+    );
+    let symbols = match sym_info_rows_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(v) => v,
+    };
+
+    let template = AlphabeticalSymbolListTemplate {
+        path_to_root: "../../",
         symbols,
     };
     TemplateResponder::Template(template)
@@ -939,9 +1172,31 @@ fn root() -> TemplateResponder<RootTemplate> {
     let Some(func_start_chars) = func_start_chars_opt
         else { return TemplateResponder::Failure };
 
+    // obtain first characters of DLLs with ordinal-only functions
+    let ordinal_dll_start_chars_opt = prepare_and_query_database(
+        &db,
+        "
+            SELECT DISTINCT
+                SUBSTR(dll_name, 1, 1)
+            FROM symbols
+            WHERE
+                dll_name IS NOT NULL
+            ORDER BY
+                1
+        ",
+        [],
+        |row| {
+            let letter: String = row.get(0)?;
+            Ok(letter)
+        },
+    );
+    let Some(ordinal_dll_start_chars) = ordinal_dll_start_chars_opt
+        else { return TemplateResponder::Failure };
+
     let template = RootTemplate {
         operating_systems,
         func_start_chars,
+        ordinal_dll_start_chars,
     };
     TemplateResponder::Template(template)
 }
@@ -969,7 +1224,10 @@ fn rocket_launcher() -> _ {
         os_dll_page,
         all_os_symbols,
         symbol_page,
+        dll_ordinal_symbol_page,
         funcs_page,
+        ordinal_only_funcs_page,
+        dll_page,
         compare_os,
         compare_os_redirect,
     ])

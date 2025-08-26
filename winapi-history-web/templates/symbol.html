@@ -12,11 +12,11 @@
 <ul>
 {% for (os, dlls) in os_dlls %}
 <li>
-  <a class="os" href="../os/{{ os.short_name|urlencode_strict }}">{{ os.long_name }}</a>
+  <a class="os" href="{{ path_to_root }}os/{{ os.short_name|urlencode_strict }}">{{ os.long_name }}</a>
   (
     {%- for dll in dlls -%}
       {%- if !loop.first -%}{{ ", " }}{%- endif -%}
-      <a class="dll" href="../dll/{{ dll.path|urlencode_strict }}">{{ dll.path }}</a>
+      <a class="dll" href="{{ path_to_root }}dll/{{ dll.path|urlencode_strict }}">{{ dll.path }}</a>
     {%- endfor -%}
   )
 </li>

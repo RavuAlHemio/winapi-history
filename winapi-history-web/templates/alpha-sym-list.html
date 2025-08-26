@@ -10,7 +10,9 @@
 <ul>
 {% for symbol in symbols %}
 {% if let Some(raw_name) = symbol.raw_name() %}
-<li><a href="../symbol/{{ raw_name|urlencode_strict }}">{{ symbol.friendly_name_or_generate() }}</a></li>
+<li><a href="{{ path_to_root }}symbol/{{ raw_name|urlencode_strict }}">{{ symbol.friendly_name_or_generate() }}</a></li>
+{% else if let Some((dll_name, ordinal)) = symbol.dll_pair() %}
+<li><a href="{{ path_to_root }}symbol/dll/{{ dll_name|urlencode_strict }}/ordinal/{{ ordinal }}">{{ symbol.friendly_name_or_generate() }}</a></li>
 {% endif %}
 {% endfor %}
 </ul>
