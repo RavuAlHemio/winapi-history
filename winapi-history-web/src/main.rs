@@ -3,11 +3,22 @@ use std::fmt::Debug;
 use std::io::Cursor;
 
 use askama::Template;
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use rocket::{Request, Response};
-use rocket::response::Responder;
+use rocket::response::{Redirect, Responder};
 use rocket::http::{ContentType, Status};
-use rusqlite::{Connection, OpenFlags, Params, Row};
+use rusqlite::{Connection, OpenFlags, Params, Row, Statement};
 use tracing::error;
+
+
+/// Characters not reserved for any special use in URLs.
+///
+/// Corresponds to the `unreserved` production in RFC3986.
+///
+/// `NON_ALPHANUMERIC` contains all characters that are not in `[0-9A-Za-z]`;
+/// we derive our set by removing the unreserved punctuation characters.
+const URL_UNRESERVED: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-').remove(b'.').remove(b'_').remove(b'~');
 
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
@@ -50,6 +61,15 @@ struct SymbolTemplate {
 #[template(path = "alpha-sym-list.html")]
 struct AlphabeticalSymbolListTemplate {
     pub symbols: Vec<SymbolPart>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
+#[template(path = "compare-os.html")]
+struct CompareOsTemplate {
+    pub old_os: OperatingSystemPart,
+    pub new_os: OperatingSystemPart,
+    pub removed_symbols: Vec<SymbolPart>,
+    pub added_symbols: Vec<SymbolPart>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -141,22 +161,26 @@ fn connect_to_database() -> Option<Connection> {
     }
 }
 
+fn prepare<'c>(db: &'c Connection, query: &str) -> Option<Statement<'c>> {
+    match db.prepare(query) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            error!("failed to prepare statement for query {:?}: {}", query, e);
+            None
+        },
+    }
+}
+
 fn query_database<
     T,
     P: Params,
     F: FnMut(&Row<'_>) -> Result<T, rusqlite::Error>,
->(db: &Connection, query: &str, params: P, transform_row: F) -> Option<Vec<T>> {
-    let mut statement = match db.prepare(query) {
-        Ok(s) => s,
-        Err(e) => {
-            error!("failed to prepare query {:?}: {}", query, e);
-            return None;
-        },
-    };
+>(statement: &mut Statement<'_>, params: P, transform_row: F) -> Option<Vec<T>> {
+    let query_debug = format!("{:?}", statement);
     let rows = match statement.query_map(params, transform_row) {
         Ok(r) => r,
         Err(e) => {
-            error!("failed to run query {:?}: {}", query, e);
+            error!("failed to run query {}: {}", query_debug, e);
             return None;
         },
     };
@@ -172,6 +196,15 @@ fn query_database<
         finished_rows.push(row);
     }
     Some(finished_rows)
+}
+
+fn prepare_and_query_database<
+    T,
+    P: Params,
+    F: FnMut(&Row<'_>) -> Result<T, rusqlite::Error>,
+>(db: &Connection, query: &str, params: P, transform_row: F) -> Option<Vec<T>> {
+    let mut statement = prepare(db, query)?;
+    query_database(&mut statement, params, transform_row)
 }
 
 fn check_database_existence<P: Params>(db: &Connection, query: &str, params: P) -> Option<bool> {
@@ -258,7 +291,7 @@ fn os_page(os_name: &str) -> TemplateResponder<OsTemplate> {
         else { return TemplateResponder::Failure };
 
     // does this operating system exist? what ID does it have?
-    let os_info_rows_opt = query_database(
+    let os_info_rows_opt = prepare_and_query_database(
         &db,
         "
             SELECT
@@ -287,7 +320,7 @@ fn os_page(os_name: &str) -> TemplateResponder<OsTemplate> {
     };
 
     // find its DLLs
-    let dlls_opt = query_database(
+    let dlls_opt = prepare_and_query_database(
         &db,
         "
             SELECT DISTINCT
@@ -331,7 +364,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
         else { return TemplateResponder::Failure };
 
     // does this operating system exist? what ID does it have?
-    let os_info_rows_opt = query_database(
+    let os_info_rows_opt = prepare_and_query_database(
         &db,
         "
             SELECT
@@ -360,7 +393,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
     };
 
     // does this DLL exist? what ID does it have?
-    let dll_info_rows_opt = query_database(
+    let dll_info_rows_opt = prepare_and_query_database(
         &db,
         "
             SELECT
@@ -389,7 +422,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
     };
 
     // find its symbols
-    let syms_opt = query_database(
+    let syms_opt = prepare_and_query_database(
         &db,
         "
             SELECT DISTINCT
@@ -447,7 +480,7 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
         else { return TemplateResponder::Failure };
 
     // does this operating system exist? what ID does it have?
-    let os_info_rows_opt = query_database(
+    let os_info_rows_opt = prepare_and_query_database(
         &db,
         "
             SELECT
@@ -477,12 +510,12 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
         Some(mut v) => v.swap_remove(0),
     };
 
-    let symbol_rows_opt = query_database(
+    let symbol_rows_opt = prepare_and_query_database(
         &db,
         "
             SELECT
                 sym.raw_name,
-                COALESCE(sym.friendly_name, sym.raw_name),
+                sym.friendly_name,
                 sym.dll_name,
                 sym.ordinal,
                 dll.path,
@@ -548,7 +581,7 @@ fn symbol_page(sym_raw_name: &str) -> TemplateResponder<SymbolTemplate> {
         else { return TemplateResponder::Failure };
 
     // does this symbol exist? what ID does it have?
-    let sym_info_rows_opt = query_database(
+    let sym_info_rows_opt = prepare_and_query_database(
         &db,
         "
             SELECT
@@ -578,7 +611,7 @@ fn symbol_page(sym_raw_name: &str) -> TemplateResponder<SymbolTemplate> {
         Some(mut v) => v.swap_remove(0),
     };
 
-    let dll_rows_opt = query_database(
+    let dll_rows_opt = prepare_and_query_database(
         &db,
         "
             SELECT
@@ -667,7 +700,7 @@ fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListT
     let prefix_len_chars = sym_raw_prefix.chars().count();
 
     // find those symbols
-    let sym_info_rows_opt = query_database(
+    let sym_info_rows_opt = prepare_and_query_database(
         &db,
         "
             SELECT
@@ -707,6 +740,152 @@ fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListT
     TemplateResponder::Template(template)
 }
 
+#[rocket::get("/compare-os?<old>&<new>")]
+fn compare_os_redirect(old: &str, new: &str) -> Redirect {
+    // construct a permanent redirect to our preferred URL
+
+    let old_percent: String = utf8_percent_encode(old, &URL_UNRESERVED).collect();
+    let new_percent: String = utf8_percent_encode(new, &URL_UNRESERVED).collect();
+    let new_url = format!("os/{}/compare/{}", old_percent, new_percent);
+
+    Redirect::permanent(new_url)
+}
+
+#[rocket::get("/os/<old>/compare/<new>")]
+fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
+    let Some(db) = connect_to_database()
+        else { return TemplateResponder::Failure };
+
+    const FIND_OS_QUERY: &str = "
+        SELECT
+            os_id,
+            short_name,
+            COALESCE(long_name, short_name)
+        FROM
+            operating_systems
+        WHERE
+            short_name = ?1
+    ";
+    let Some(mut find_os_stmt) = prepare(&db, FIND_OS_QUERY)
+        else { return TemplateResponder::Failure };
+
+    let os_ify = |row: &Row<'_>| {
+        let os_id: i64 = row.get(0)?;
+        let short_name: String = row.get(1)?;
+        let long_name: String = row.get(2)?;
+        Ok((os_id, OperatingSystemPart {
+            short_name,
+            long_name,
+        }))
+    };
+
+    // find old OS
+    let old_rows_res = query_database(
+        &mut find_os_stmt,
+        [old],
+        os_ify,
+    );
+    let (old_os_id, old_os_part) = match old_rows_res {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(mut v) => v.swap_remove(0),
+    };
+
+    // find new OS
+    let new_rows_res = query_database(
+        &mut find_os_stmt,
+        [new],
+        os_ify,
+    );
+    let (new_os_id, new_os_part) = match new_rows_res {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(mut v) => v.swap_remove(0),
+    };
+
+    // prepare a symbol-difference query
+    const SYMBOL_DIFF_QUERY: &str = "
+        SELECT
+            sym.raw_name,
+            sym.friendly_name,
+            sym.dll_name,
+            sym.ordinal
+        FROM
+            symbols sym
+        WHERE
+            EXISTS (
+                SELECT 1
+                FROM symbol_dll_os y_sdo
+                WHERE y_sdo.os_id = ?1
+                AND y_sdo.sym_id = sym.sym_id
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM symbol_dll_os n_sdo
+                WHERE n_sdo.os_id = ?2
+                AND n_sdo.sym_id = sym.sym_id
+            )
+        ORDER BY
+            4, 1 ASC NULLS LAST, 2, 3
+    ";
+    let Some(mut symbol_diff_stmt) = prepare(&db, SYMBOL_DIFF_QUERY)
+        else { return TemplateResponder::Failure };
+
+    let symbol_ify = |row: &Row<'_>| {
+        let raw_name: Option<String> = row.get(0)?;
+        let friendly_name: Option<String> = row.get(1)?;
+        let dll_name: Option<String> = row.get(2)?;
+        let ordinal: Option<u64> = row.get(3)?;
+
+        let sym_part = if let Some(rn) = raw_name {
+            SymbolPart::Named {
+                raw_name: rn,
+                friendly_name,
+            }
+        } else if let Some(dn) = dll_name {
+            let ord = ordinal.unwrap();
+            SymbolPart::DllOrdinal {
+                dll_name: dn,
+                ordinal: ord,
+                friendly_name,
+            }
+        } else {
+            panic!("symbol that is neither named nor ordinal");
+        };
+        Ok(sym_part)
+    };
+
+    // find symbols which are in old but not in new
+    let removed_symbol_rows_opt = query_database(
+        &mut symbol_diff_stmt,
+        [old_os_id, new_os_id],
+        symbol_ify,
+    );
+    let removed_symbols = match removed_symbol_rows_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) => v,
+    };
+
+    // find symbols which are in new but not old
+    let added_symbols_rows_opt = query_database(
+        &mut symbol_diff_stmt,
+        [new_os_id, old_os_id],
+        symbol_ify,
+    );
+    let added_symbols = match added_symbols_rows_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) => v,
+    };
+
+    let template = CompareOsTemplate {
+        old_os: old_os_part,
+        new_os: new_os_part,
+        added_symbols,
+        removed_symbols,
+    };
+    TemplateResponder::Template(template)
+}
+
 
 #[rocket::get("/")]
 fn root() -> TemplateResponder<RootTemplate> {
@@ -714,7 +893,7 @@ fn root() -> TemplateResponder<RootTemplate> {
         else { return TemplateResponder::Failure };
 
     // obtain operating systems
-    let operating_systems_opt = query_database(
+    let operating_systems_opt = prepare_and_query_database(
         &db,
         "
             SELECT
@@ -739,7 +918,7 @@ fn root() -> TemplateResponder<RootTemplate> {
         else { return TemplateResponder::Failure };
 
     // obtain first characters of function names
-    let func_start_chars_opt = query_database(
+    let func_start_chars_opt = prepare_and_query_database(
         &db,
         "
             SELECT DISTINCT
@@ -791,5 +970,7 @@ fn rocket_launcher() -> _ {
         all_os_symbols,
         symbol_page,
         funcs_page,
+        compare_os,
+        compare_os_redirect,
     ])
 }

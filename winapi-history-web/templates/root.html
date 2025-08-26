@@ -25,4 +25,24 @@
 <a href="funcs/ordinal-only">ordinal-only functions</a>
 </p>
 
+<h2>Compare API Surfaces</h2>
+
+<form action="compare-os" method="get">
+<p>
+  Compare the change in API surface between
+  <select name="old" required="required">
+    {% for os in operating_systems %}
+    <option value="{{ os.short_name }}">{{ os.long_name }}</option>
+    {% endfor %}
+  </select>
+  and
+  <select name="new" required="required">
+    {% for os in operating_systems %}
+    <option value="{{ os.short_name }}">{{ os.long_name }}</option>
+    {% endfor %}
+  </select>
+  <input type="submit" value="compare" />
+</p>
+</form>
+
 {% endblock %}

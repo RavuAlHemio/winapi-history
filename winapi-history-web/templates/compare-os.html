@@ -1,0 +1,36 @@
+{% extends "_base.html" %}
+
+{% macro output_symbol(symbol) %}
+<li><a href="{%
+  if let Some((dll_name, ordinal)) = symbol.dll_pair()
+%}../../../dll/{{ dll_name|urlencode_strict }}/ordinal/{{ ordinal }}{%
+  else if let Some(raw_name) = symbol.raw_name()
+%}../../../symbol/{{ raw_name|urlencode_strict }}{%
+  endif
+%}">{{ symbol.friendly_name_or_generate() }}</a></li>
+{% endmacro %}
+
+{% block title %}Comparing Symbols between {{ old_os.long_name }} and {{ new_os.long_name }}{% endblock %}
+
+{% block body %}
+<h1>Windows APIs</h1>
+
+<h2>Comparing Symbols between {{ old_os.long_name }} and {{ new_os.long_name }}</h2>
+
+<h3>Added between {{ old_os.long_name }} and {{ new_os.long_name }}</h3>
+
+<ul class="added">
+{% for symbol in added_symbols %}
+{% call output_symbol(symbol) %}
+{% endfor %}
+</ul>
+
+<h3>Removed between {{ old_os.long_name }} and {{ new_os.long_name }}</h3>
+
+<ul class="removed">
+{% for symbol in removed_symbols %}
+{% call output_symbol(symbol) %}
+{% endfor %}
+</ul>
+
+{% endblock %}

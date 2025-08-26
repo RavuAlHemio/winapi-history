@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 askama = { version = "0.14" }
 clap = { version = "4.5", features = ["derive"] }
+percent-encoding = { version = "2.3" }
 rocket = { version = "0.5" }
 rusqlite = { version = "0.37" }
 tracing = { version = "0.1" }

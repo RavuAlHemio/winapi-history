@@ -1696,6 +1696,7 @@ version = "0.1.0"
 dependencies = [
  "askama",
  "clap",
+ "percent-encoding",
  "rocket",
  "rusqlite",
  "tracing",
