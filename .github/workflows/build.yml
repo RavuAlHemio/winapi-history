@@ -74,5 +74,5 @@ jobs:
         with:
           name: winapi-history-${{ matrix.os.name }}-${{ matrix.build_mode.mode }}
           path: |
-            target/${{ matrix.build_mode.mode }}/winapi-history${{ matrix.os.exe_suffix }}
+            target/${{ matrix.build_mode.mode }}/winapi-history-web${{ matrix.os.exe_suffix }}
             winapi-history-web/icons/*.png
