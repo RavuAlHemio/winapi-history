@@ -13,13 +13,17 @@ jobs:
           - name: archlinux
             host_os: ubuntu-latest
             container: archlinux:base-devel
+            exe_suffix: ""
           - name: ubuntu
             host_os: ubuntu-latest
             container: ubuntu:latest
+            exe_suffix: ""
           - name: windows
             host_os: windows-latest
+            exe_suffix: ".exe"
           - name: macos
             host_os: macos-latest
+            exe_suffix: ""
       fail-fast: false
 
     runs-on: ${{ matrix.os.host_os }}
@@ -65,3 +69,10 @@ jobs:
         run: cargo build --all-targets ${{ matrix.build_mode.arg }}
       - name: run test
         run: cargo test ${{ matrix.build_mode.arg }}
+      - name: upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: winapi-history-${{ matrix.os.name }}-${{ matrix.build_mode.mode }}
+          path: |
+            target/${{ matrix.build_mode.mode }}/winapi-history${{ matrix.os.exe_suffix }}
+            winapi-history-web/icons/*.png
