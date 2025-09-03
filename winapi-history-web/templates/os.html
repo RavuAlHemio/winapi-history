@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% import "_macros.html" as macros %}
 
 {% block title %}{{ os.long_name }} APIs{% endblock %}
 
@@ -6,6 +7,8 @@
 <h1>Windows APIs</h1>
 
 <h2>{{ os.long_name }} APIs</h2>
+
+<p>&rArr; {% call macros::output_os(os, "../", false) %}</p>
 
 <p><a href="{{ os.short_name }}/all-symbols">the whole list</a></p>
 

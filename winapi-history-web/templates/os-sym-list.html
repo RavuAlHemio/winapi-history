@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% import "_macros.html" as macros %}
 
 {% block title %}{{ os.long_name }} All Symbols{% endblock %}
 
@@ -6,6 +7,8 @@
 <h1>Windows APIs</h1>
 
 <h2>{{ os.long_name }} All Symbols</h2>
+
+<p>&rArr; {%- call macros::output_os(os, "../../../", true) -%}</p>
 
 <ul>
 {% for symbol in symbols %}

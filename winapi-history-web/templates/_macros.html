@@ -1,0 +1,9 @@
+{%- macro output_os(os, path_prefix, link) -%}
+  {%- if link -%}<a href="{{ path_prefix }}os/{{ os.short_name|urlencode_strict }}">{%- endif -%}
+  {%- if os.has_icon -%}
+    <img class="os-icon" src="{{ path_prefix }}static/os-icons/{{ os.short_name|urlencode_strict }}.png" width="32" height="32" title="{{ os.long_name }}" />
+  {%- else -%}
+    {{ os.long_name }}
+  {%- endif -%}
+  {%- if link -%}</a>{%- endif -%}
+{%- endmacro -%}

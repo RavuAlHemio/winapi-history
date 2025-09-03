@@ -86,6 +86,7 @@ struct CompareOsTemplate {
 struct OperatingSystemPart {
     pub short_name: String,
     pub long_name: String,
+    pub has_icon: bool,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -305,7 +306,7 @@ fn os_page(os_name: &str) -> TemplateResponder<OsTemplate> {
         &db,
         "
             SELECT
-                os_id, short_name, COALESCE(long_name, short_name)
+                os_id, short_name, COALESCE(long_name, short_name), has_icon
             FROM
                 operating_systems
             WHERE
@@ -316,9 +317,11 @@ fn os_page(os_name: &str) -> TemplateResponder<OsTemplate> {
             let os_id: i64 = row.get(0)?;
             let short_name: String = row.get(1)?;
             let long_name: String = row.get(2)?;
+            let has_icon: bool = row.get(3)?;
             let os_part = OperatingSystemPart {
                 short_name,
                 long_name,
+                has_icon,
             };
             Ok((os_id, os_part))
         },
@@ -378,7 +381,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
         &db,
         "
             SELECT
-                os_id, short_name, COALESCE(long_name, short_name)
+                os_id, short_name, COALESCE(long_name, short_name), has_icon
             FROM
                 operating_systems
             WHERE
@@ -389,9 +392,12 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
             let os_id: i64 = row.get(0)?;
             let short_name: String = row.get(1)?;
             let long_name: String = row.get(2)?;
+            let has_icon: bool = row.get(3)?;
+
             let os_part = OperatingSystemPart {
                 short_name,
                 long_name,
+                has_icon,
             };
             Ok((os_id, os_part))
         },
@@ -496,7 +502,8 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
             SELECT
                 os_id,
                 short_name,
-                COALESCE(long_name, short_name)
+                COALESCE(long_name, short_name),
+                has_icon
             FROM
                 operating_systems
             WHERE
@@ -507,9 +514,11 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
             let os_id: i64 = row.get(0)?;
             let short_name: String = row.get(1)?;
             let long_name: String = row.get(2)?;
+            let has_icon: bool = row.get(3)?;
             let os_part = OperatingSystemPart {
                 short_name,
                 long_name,
+                has_icon,
             };
             Ok((os_id, os_part))
         },
@@ -593,6 +602,7 @@ fn finish_dlls(db: &Connection, sym_id: i64, sym_part: SymbolPart, path_to_root:
                 os.os_id,
                 os.short_name,
                 COALESCE(os.long_name, os.short_name),
+                os.has_icon,
                 dll.path,
                 dll.secondary_platform
             FROM
@@ -612,12 +622,14 @@ fn finish_dlls(db: &Connection, sym_id: i64, sym_part: SymbolPart, path_to_root:
             let os_id: i64 = row.get(0)?;
             let os_short_name: String = row.get(1)?;
             let os_long_name: String = row.get(2)?;
-            let dll_path: String = row.get(3)?;
-            let dll_secondary_platform: bool = row.get(4)?;
+            let os_has_icon: bool = row.get(3)?;
+            let dll_path: String = row.get(4)?;
+            let dll_secondary_platform: bool = row.get(5)?;
 
             let os = OperatingSystemPart {
                 short_name: os_short_name,
                 long_name: os_long_name,
+                has_icon: os_has_icon,
             };
             let dll = DllPart {
                 path: dll_path,
@@ -835,7 +847,8 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
     const OS_QUERY: &'static str = "
         SELECT DISTINCT
             os.short_name,
-            COALESCE(os.long_name, os.short_name)
+            COALESCE(os.long_name, os.short_name),
+            has_icon
         FROM
             operating_systems os
             INNER JOIN symbol_dll_os sdo
@@ -856,9 +869,11 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
             |row| {
                 let short_name: String = row.get(0)?;
                 let long_name: String = row.get(1)?;
+                let has_icon: bool = row.get(2)?;
                 Ok(OperatingSystemPart {
                     short_name,
                     long_name,
+                    has_icon,
                 })
             },
         );
@@ -993,7 +1008,8 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
         SELECT
             os_id,
             short_name,
-            COALESCE(long_name, short_name)
+            COALESCE(long_name, short_name),
+            has_icon
         FROM
             operating_systems
         WHERE
@@ -1006,9 +1022,11 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
         let os_id: i64 = row.get(0)?;
         let short_name: String = row.get(1)?;
         let long_name: String = row.get(2)?;
+            let has_icon: bool = row.get(3)?;
         Ok((os_id, OperatingSystemPart {
             short_name,
             long_name,
+            has_icon,
         }))
     };
 
@@ -1131,7 +1149,8 @@ fn root() -> TemplateResponder<RootTemplate> {
         "
             SELECT
                 short_name,
-                COALESCE(long_name, short_name)
+                COALESCE(long_name, short_name),
+                has_icon
             FROM operating_systems
             ORDER BY
                 release_date ASC NULLS LAST,
@@ -1141,9 +1160,11 @@ fn root() -> TemplateResponder<RootTemplate> {
         |row| {
             let short_name: String = row.get(0)?;
             let long_name: String = row.get(1)?;
+            let has_icon: bool = row.get(2)?;
             Ok(OperatingSystemPart {
                 short_name,
                 long_name,
+                has_icon,
             })
         },
     );

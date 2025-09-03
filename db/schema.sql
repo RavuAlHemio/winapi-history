@@ -22,6 +22,7 @@ CREATE TABLE operating_systems
 , short_name TEXT NOT NULL UNIQUE
 , long_name TEXT NULL DEFAULT NULL
 , release_date TEXT NULL DEFAULT NULL
+, has_icon INTEGER NOT NULL DEFAULT 0 CHECK(has_icon IN (0, 1))
 , CHECK (release_date IS NULL OR date(release_date) = release_date)
 );
 
@@ -55,7 +56,7 @@ CREATE INDEX idx_sdo_o ON symbol_dll_os (os_id);
 CREATE TABLE schema_version
 ( ver INTEGER NOT NULL
 );
-INSERT INTO schema_version (ver) VALUES (1);
+INSERT INTO schema_version (ver) VALUES (2);
 CREATE TRIGGER trig_schema_version_no_insert
     BEFORE INSERT ON schema_version
     BEGIN

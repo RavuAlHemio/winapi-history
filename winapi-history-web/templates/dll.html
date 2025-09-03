@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% import "_macros.html" as macros %}
 
 {% block title %}Symbols in {{ dll.path }}{% endblock %}
 
@@ -24,7 +25,7 @@
 (
   {%- for os in oses -%}
     {%- if !loop.first -%}{{ ", " }}{%- endif -%}
-    <a href="../os/{{ os.short_name|urlencode_strict }}">{{ os.long_name|urlencode_strict }}</a>
+    {%- call macros::output_os(os, "../", true) -%}
   {%- endfor -%}
 )
 {%- endif %}</li>

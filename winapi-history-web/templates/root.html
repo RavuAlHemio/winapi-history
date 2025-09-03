@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% import "_macros.html" as macros %}
 
 {% block title %}Windows APIs{% endblock %}
 
@@ -10,7 +11,7 @@
 <p>
 {%- for os in operating_systems -%}
 {%- if !loop.first -%}{{ " &middot; "|safe }}{%- endif -%}
-<a href="os/{{ os.short_name|urlencode_strict }}">{{ os.long_name }}</a>
+{%- call macros::output_os(os, "", true) -%}
 {%- endfor -%}
 </p>
 
