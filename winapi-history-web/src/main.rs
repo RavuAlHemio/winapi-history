@@ -443,7 +443,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
         "
             SELECT DISTINCT
                 sym.raw_name,
-                COALESCE(sym.friendly_name, sym.raw_name),
+                sym.friendly_name,
                 sym.dll_name,
                 sym.ordinal
             FROM
@@ -456,7 +456,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
                 sdo.os_id = ?1
                 AND d.dll_id = ?2
             ORDER BY
-                2, 3, 4
+                2 ASC NULLS LAST, 1, 3, 4
         ",
         [os_id, dll_id],
         |row| {
@@ -549,6 +549,7 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
                 sdo.os_id = ?1
             ORDER BY
                 2 ASC NULLS LAST,
+                1,
                 3, 4
         ",
         [os_id],
@@ -803,7 +804,7 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
             SELECT DISTINCT
                 sym.sym_id,
                 sym.raw_name,
-                COALESCE(sym.friendly_name, sym.raw_name),
+                sym.friendly_name, sym.raw_name,
                 sym.dll_name,
                 sym.ordinal
             FROM
@@ -815,7 +816,7 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
             WHERE
                 d.dll_id = ?1
             ORDER BY
-                2, 3, 4
+                3 ASC NULLS LAST, 2, 4, 5
         ",
         [dll_id],
         |row| {
@@ -960,7 +961,7 @@ fn ordinal_only_funcs_page(dll_path_prefix: &str) -> TemplateResponder<Alphabeti
                 AND SUBSTR(dll_name, 1, ?1) = ?2
                 AND ordinal IS NOT NULL
             ORDER BY
-                3, 1, 2
+                3 ASC NULLS LAST, 1, 2
         ",
         (dll_path_prefix_len, dll_path_prefix),
         |row| {
