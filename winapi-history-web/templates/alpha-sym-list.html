@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% import "_macros.html" as macros %}
 
 {% block title %}Alphabetical Symbol List{% endblock %}
 
@@ -9,11 +10,7 @@
 
 <ul>
 {% for symbol in symbols %}
-{% if let Some(raw_name) = symbol.raw_name() %}
-<li><a href="{{ path_to_root }}symbol/{{ raw_name|urlencode_strict }}">{{ symbol.friendly_name_or_generate() }}</a></li>
-{% else if let Some((dll_name, ordinal)) = symbol.dll_pair() %}
-<li><a href="{{ path_to_root }}symbol/dll/{{ dll_name|urlencode_strict }}/ordinal/{{ ordinal }}">{{ symbol.friendly_name_or_generate() }}</a></li>
-{% endif %}
+<li>{% call macros::output_symbol(symbol, path_to_root) %}</li>
 {% endfor %}
 </ul>
 

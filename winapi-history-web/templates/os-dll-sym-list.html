@@ -18,13 +18,7 @@
 
 <ul>
 {% for symbol in symbols %}
-<li><a href="{%
-  if let Some((dll_name, ordinal)) = symbol.dll_pair()
-%}../../../dll/{{ dll_name|urlencode_strict }}/ordinal/{{ ordinal }}{%
-  else if let Some(raw_name) = symbol.raw_name()
-%}../../../symbol/{{ raw_name|urlencode_strict }}{%
-  endif
-%}">{{ symbol.friendly_name_or_generate() }}</a></li>
+<li>{%- call macros::output_symbol(symbol, "../../../") -%}</li>
 {% endfor %}
 </ul>
 
