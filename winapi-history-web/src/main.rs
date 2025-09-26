@@ -804,7 +804,7 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
             SELECT DISTINCT
                 sym.sym_id,
                 sym.raw_name,
-                sym.friendly_name
+                sym.friendly_name,
                 sym.dll_name,
                 sym.ordinal
             FROM
