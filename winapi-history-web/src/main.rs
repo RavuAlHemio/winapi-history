@@ -1173,15 +1173,22 @@ fn root() -> TemplateResponder<RootTemplate> {
         else { return TemplateResponder::Failure };
 
     // obtain first characters of function names
+    // (except "?", there's a lot of those due to C++ name mangling, take two characters in this case)
     let func_start_chars_opt = prepare_and_query_database(
         &db,
         "
-            SELECT DISTINCT
-                SUBSTR(COALESCE(friendly_name, raw_name), 1, 1)
-            FROM symbols
-            WHERE
-                friendly_name IS NOT NULL
+            WITH symbol_best_name(name) AS (
+                SELECT COALESCE(friendly_name, raw_name) name
+                FROM symbols
+                WHERE friendly_name IS NOT NULL
                 OR raw_name IS NOT NULL
+            )
+            SELECT DISTINCT
+                CASE SUBSTR(name, 1, 1)
+                    WHEN '?' THEN SUBSTR(name, 1, 2)
+                    ELSE SUBSTR(name, 1, 1)
+                END symbol_name
+            FROM symbol_best_name
             ORDER BY
                 1
         ",
