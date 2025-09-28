@@ -72,7 +72,29 @@ fn main() {
             .expect("failed to create initial database schema");
     }
 
-    // add migration-execution logic here when the schema gets an upgrade
+    // migration-execution logic
+    const MAX_SUPPORTED_SCHEMA: i64 = 2;
+    let schema_version: i64 = db.query_one(
+        "SELECT ver FROM schema_version",
+        [],
+        |r| r.get(0)
+    )
+        .expect("failed to query database for schema version");
+    if schema_version <= 0 {
+        panic!("database has invalid schema version {}", schema_version);
+    }
+    if schema_version == 1 {
+        eprintln!("updating database to schema version 2");
+        db.execute_batch(include_str!("../../db/migrations/r0001_to_r0002.sql"))
+            .expect("failed to update database schema from version 1 to 2");
+    }
+    if schema_version > MAX_SUPPORTED_SCHEMA {
+        eprintln!(
+            "WARNING: schema version {} is greater than supported by this version ({})",
+            schema_version, MAX_SUPPORTED_SCHEMA,
+        );
+        eprintln!("here's hoping nothing bad happens...");
+    }
 
     // start a transaction
     let txn = db.transaction()
