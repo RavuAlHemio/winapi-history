@@ -150,6 +150,10 @@ fn do_load(opts: LoadOpts) {
         eprintln!("here's hoping nothing bad happens...");
     }
 
+    // enable foreign-key enforcement
+    db.pragma_update(None, "foreign_keys", true)
+        .expect("failed to enable foreign-key enforcement");
+
     // start a transaction
     let txn = db.transaction()
         .expect("failed to start transaction");
@@ -405,6 +409,10 @@ fn do_demangle_db(opts: DemangleDbOpts) {
             | OpenFlags::SQLITE_OPEN_NO_MUTEX
     )
         .expect("failed to open SQLite database");
+
+    // enable foreign-key enforcement
+    db.pragma_update(None, "foreign_keys", true)
+        .expect("failed to enable foreign-key enforcement");
 
     // start a transaction
     let txn = db.transaction()

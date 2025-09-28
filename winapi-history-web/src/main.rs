@@ -164,7 +164,13 @@ fn connect_to_database() -> Option<Connection> {
             | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     );
     match conn_res {
-        Ok(c) => Some(c),
+        Ok(c) => {
+            // we don't really care as long as the connection is read-only,
+            // but should we ever implement writing features...
+            c.pragma_update(None, "foreign_keys", true)
+                .expect("failed to enable foreign-key enforcement");
+            Some(c)
+        },
         Err(e) => {
             error!("failed to connect to database: {}", e);
             None
