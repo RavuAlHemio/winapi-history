@@ -19,6 +19,10 @@ enum Mode {
     /// Demangle a Microsoft C++ symbol.
     #[cfg(feature = "ms_cpp_filt")]
     Demangle(DemangleOpts),
+
+    /// Add demangled name variants to entries in an existing database.
+    #[cfg(feature = "ms_cpp_filt")]
+    DemangleDb(DemangleDbOpts),
 }
 
 #[derive(Parser)]
@@ -87,6 +91,10 @@ fn main() {
             do_demangle(demangle_opts);
         },
 
+        #[cfg(feature = "ms_cpp_filt")]
+        Mode::DemangleDb(opts) => {
+            do_demangle_db(opts);
+        },
     }
 }
 
@@ -384,4 +392,55 @@ fn try_demangle(symbol: &str) -> Option<String> {
 #[cfg(not(feature = "ms_cpp_filt"))]
 fn try_demangle(_symbol: &str) -> Option<String> {
     None
+}
+
+#[cfg(feature = "ms_cpp_filt")]
+fn do_demangle_db(opts: DemangleDbOpts) {
+    // open the SQLite database
+    let mut db = Connection::open_with_flags(
+        &opts.database_path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE
+            | OpenFlags::SQLITE_OPEN_CREATE
+            | OpenFlags::SQLITE_OPEN_EXRESCODE
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+    )
+        .expect("failed to open SQLite database");
+
+    // start a transaction
+    let txn = db.transaction()
+        .expect("failed to start transaction");
+
+    {
+        // prepare a few statements we will be using
+        let mut query_named_symbols_without_friendly_name = txn
+            .prepare("SELECT sym_id, raw_name FROM symbols WHERE raw_name IS NOT NULL AND friendly_name IS NULL")
+            .expect("failed to prepare query_named_symbols_without_friendly_name statement");
+        let mut set_symbol_friendly_name = txn
+            .prepare("UPDATE symbols SET friendly_name = ?1 WHERE sym_id = ?2")
+            .expect("failed to prepare query set_symbol_friendly_name");
+
+        let mut symbol_rows = query_named_symbols_without_friendly_name.query(())
+            .expect("failed to query named symbols");
+        loop {
+            let row_opt = symbol_rows.next()
+                .expect("failed to obtain row");
+            let Some(row) = row_opt else { break };
+
+            let symbol_id: i64 = row.get(0)
+                .expect("failed to obtain symbol ID from row");
+            let raw_name: String = row.get(1)
+                .expect("failed to obtain raw name from row");
+
+            let Ok(demangled) = crate::ms_cpp_filt::demangle_cpp_name(&raw_name)
+                else { continue };
+
+            set_symbol_friendly_name
+                .execute((demangled.as_str(), symbol_id))
+                .expect("failed to set friendly name");
+        }
+    }
+
+    // and we're done
+    txn.commit()
+        .expect("committing transaction failed");
 }
