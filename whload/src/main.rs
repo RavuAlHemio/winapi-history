@@ -1,3 +1,4 @@
+#[cfg(feature = "ms_cpp_filt")]
 mod ms_cpp_filt;
 
 
@@ -11,12 +12,36 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, Params, Statement};
 
 
 #[derive(Parser)]
-struct Opts {
+enum Mode {
+    /// Load symbols into the database.
+    Load(LoadOpts),
+
+    /// Demangle a Microsoft C++ symbol.
+    #[cfg(feature = "ms_cpp_filt")]
+    Demangle(DemangleOpts),
+}
+
+#[derive(Parser)]
+struct LoadOpts {
     /// The path to the SQLite database in which to store the API information.
     pub database_path: PathBuf,
 
     /// The list of API calls.
     pub list_path: PathBuf,
+}
+
+#[cfg(feature = "ms_cpp_filt")]
+#[derive(Parser)]
+struct DemangleOpts {
+    /// The name to demangle.
+    pub name: String,
+}
+
+#[cfg(feature = "ms_cpp_filt")]
+#[derive(Parser)]
+struct DemangleDbOpts {
+    /// The path to the SQLite database which to update with demangled names.
+    pub database_path: PathBuf,
 }
 
 
@@ -49,10 +74,31 @@ fn run_insert_id_query<P: Params>(statement: &mut Statement, params: P) -> i64 {
         .expect("failed to run insert-ID query")
 }
 
-
 fn main() {
-    let opts = Opts::parse();
+    let mode = Mode::parse();
 
+    match mode {
+        Mode::Load(load_opts) => {
+            do_load(load_opts);
+        },
+
+        #[cfg(feature = "ms_cpp_filt")]
+        Mode::Demangle(demangle_opts) => {
+            do_demangle(demangle_opts);
+        },
+
+    }
+}
+
+#[cfg(feature = "ms_cpp_filt")]
+fn do_demangle(opts: DemangleOpts) {
+    match crate::ms_cpp_filt::demangle_cpp_name(&opts.name) {
+        Ok(d) => println!("ISOK {}", d),
+        Err(e) => println!("FAIL {}", e),
+    }
+}
+
+fn do_load(opts: LoadOpts) {
     // open the SQLite database
     let mut db = Connection::open_with_flags(
         &opts.database_path,
@@ -118,7 +164,7 @@ fn main() {
             .prepare("SELECT sym_id FROM symbols WHERE raw_name = ?1")
             .expect("failed to prepare query_named_symbol statement");
         let mut insert_named_symbol = txn
-            .prepare("INSERT INTO symbols (raw_name, dll_name, ordinal, friendly_name) VALUES (?1, NULL, NULL, NULL) RETURNING sym_id")
+            .prepare("INSERT INTO symbols (raw_name, dll_name, ordinal, friendly_name) VALUES (?1, NULL, NULL, ?2) RETURNING sym_id")
             .expect("failed to prepare query insert_named_symbol");
         let mut query_dll_ordinal_symbol = txn
             .prepare("SELECT sym_id FROM symbols WHERE dll_name = ?1 AND ordinal = ?2")
@@ -273,9 +319,13 @@ fn main() {
                     let sym_id = match named_id_opt {
                         Some(ni) => ni,
                         None => {
+                            // we don't know this symbol yet
+                            // try demangling it to obtain a friendly name
+                            let friendly_name = try_demangle(symbol_name);
+
                             run_insert_id_query(
                                 &mut insert_named_symbol,
-                                [symbol_name],
+                                (symbol_name, friendly_name),
                             )
                         },
                     };
@@ -324,4 +374,14 @@ fn main() {
     // and we're done
     txn.commit()
         .expect("committing transaction failed");
+}
+
+#[cfg(feature = "ms_cpp_filt")]
+fn try_demangle(symbol: &str) -> Option<String> {
+    crate::ms_cpp_filt::demangle_cpp_name(symbol).ok()
+}
+
+#[cfg(not(feature = "ms_cpp_filt"))]
+fn try_demangle(_symbol: &str) -> Option<String> {
+    None
 }
