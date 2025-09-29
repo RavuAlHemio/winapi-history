@@ -443,7 +443,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
         Some(mut v) => v.swap_remove(0),
     };
 
-    // find its symbols
+    // find the DLL's symbols in this OS, named and ordinal
     let syms_opt = prepare_and_query_database(
         &db,
         "
@@ -462,7 +462,10 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
                 sdo.os_id = ?1
                 AND d.dll_id = ?2
             ORDER BY
-                2 ASC NULLS LAST, 1, 3, 4
+                1 ASC NULLS LAST,
+                2 ASC NULLS LAST,
+                3,
+                4
         ",
         [os_id, dll_id],
         |row| {
@@ -535,6 +538,7 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
         Some(mut v) => v.swap_remove(0),
     };
 
+    // find all symbols available in this OS, named and ordinal
     let symbol_rows_opt = prepare_and_query_database(
         &db,
         "
@@ -554,9 +558,10 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
             WHERE
                 sdo.os_id = ?1
             ORDER BY
+                1 ASC NULLS LAST,
                 2 ASC NULLS LAST,
-                1,
-                3, 4
+                3,
+                4
         ",
         [os_id],
         |row| {
@@ -803,7 +808,7 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
         Some(mut v) => v.swap_remove(0),
     };
 
-    // find the symbols in the DLL
+    // find the symbols in the DLL, named or ordinal
     let syms_opt = prepare_and_query_database(
         &db,
         "
@@ -822,7 +827,10 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
             WHERE
                 d.dll_id = ?1
             ORDER BY
-                3 ASC NULLS LAST, 2, 4, 5
+                2 ASC NULLS LAST,
+                3 ASC NULLS LAST,
+                4,
+                5
         ",
         [dll_id],
         |row| {
@@ -903,7 +911,7 @@ fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListT
 
     let prefix_len_chars = sym_raw_prefix.chars().count();
 
-    // find those symbols
+    // find the symbols with that raw-name prefix
     let sym_info_rows_opt = prepare_and_query_database(
         &db,
         "
@@ -919,7 +927,7 @@ fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListT
                     OR SUBSTR(friendly_name, 1, ?1) = ?2
                 )
             ORDER BY
-                COALESCE(friendly_name, raw_name)
+                raw_name
         ",
         (prefix_len_chars, sym_raw_prefix),
         |row| {
@@ -952,7 +960,7 @@ fn ordinal_only_funcs_page(dll_path_prefix: &str) -> TemplateResponder<Alphabeti
 
     let dll_path_prefix_len = dll_path_prefix.chars().count();
 
-    // find the symbols
+    // find the ordinal-only symbols
     let sym_info_rows_opt = prepare_and_query_database(
         &db,
         "
@@ -1061,7 +1069,7 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
         Some(mut v) => v.swap_remove(0),
     };
 
-    // prepare a symbol-difference query
+    // prepare a symbol-difference query, for both named and ordinal symbols
     const SYMBOL_DIFF_QUERY: &str = "
         SELECT
             sym.raw_name,
@@ -1084,7 +1092,10 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
                 AND n_sdo.sym_id = sym.sym_id
             )
         ORDER BY
-            4, 1 ASC NULLS LAST, 2, 3
+            1 ASC NULLS LAST,
+            2 ASC NULLS LAST,
+            3,
+            4
     ";
     let Some(mut symbol_diff_stmt) = prepare(&db, SYMBOL_DIFF_QUERY)
         else { return TemplateResponder::Failure };
@@ -1179,15 +1190,22 @@ fn root() -> TemplateResponder<RootTemplate> {
         else { return TemplateResponder::Failure };
 
     // obtain first characters of function names
-    // (except "?", there's a lot of those due to C++ name mangling, take two characters in this case)
+    // (raw names for named functions, friendly names for ordinal functions)
+    // except "?", there's a lot of those due to C++ name mangling, take two characters in this case
     let func_start_chars_opt = prepare_and_query_database(
         &db,
         "
             WITH symbol_best_name(name) AS (
-                SELECT COALESCE(friendly_name, raw_name) name
-                FROM symbols
-                WHERE friendly_name IS NOT NULL
-                OR raw_name IS NOT NULL
+                SELECT
+                    CASE
+                        WHEN raw_name IS NOT NULL THEN raw_name
+                        ELSE friendly_name
+                    END name
+                FROM
+                    symbols
+                WHERE
+                    raw_name IS NOT NULL
+                    OR friendly_name IS NOT NULL
             )
             SELECT DISTINCT
                 CASE SUBSTR(name, 1, 1)
