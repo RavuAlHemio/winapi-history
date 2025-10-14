@@ -218,10 +218,10 @@ fn do_load(opts: LoadOpts) {
 
             // output progress
             file_bytes_read += u64::try_from(bytes_read).unwrap();
-            let now_file_percentage = (file_bytes_read * 1000) / file_length;
+            let now_file_percentage = (file_bytes_read * 100) / file_length;
             if last_file_percentage < now_file_percentage {
                 last_file_percentage = now_file_percentage;
-                eprintln!("{}\u{2030}", now_file_percentage);
+                eprintln!("{}%", now_file_percentage);
             }
 
             // strip trailing newlines
