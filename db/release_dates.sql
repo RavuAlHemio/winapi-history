@@ -44,3 +44,4 @@ UPDATE operating_systems SET release_date='2022-09-20' WHERE short_name='win11r2
 UPDATE operating_systems SET release_date='2022-10-18' WHERE short_name='win10r22h2';
 UPDATE operating_systems SET release_date='2023-10-31' WHERE short_name='win11r23h2';
 UPDATE operating_systems SET release_date='2024-10-01' WHERE short_name='win11r24h2';
+UPDATE operating_systems SET release_date='2025-09-30' WHERE short_name='win11r25h2';
