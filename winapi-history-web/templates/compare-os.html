@@ -14,7 +14,7 @@
 
 <ul class="added">
 {% for symbol in added_symbols %}
-{% call macros::output_symbol(symbol, "../../../") %}
+<li>{% call macros::output_symbol(symbol, "../../../") %}</li>
 {% endfor %}
 </ul>
 
@@ -22,7 +22,7 @@
 
 <ul class="removed">
 {% for symbol in removed_symbols %}
-{% call macros::output_symbol(symbol, "../../../") %}
+<li>{% call macros::output_symbol(symbol, "../../../") %}</li>
 {% endfor %}
 </ul>
 
