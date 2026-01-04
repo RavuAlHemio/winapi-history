@@ -8,13 +8,13 @@
 
 <h2>Comparing {{ dll_path }} Symbols between {{ old_os.long_name }} and {{ new_os.long_name }}</h2>
 
-<p>{% call macros::output_os(old_os, "../../../", true) %} &rArr; {% call macros::output_os(new_os, "../../../", true) %}</p>
+<p>{% call macros::output_os(old_os, "../../../../../", true) %} &rArr; {% call macros::output_os(new_os, "../../../../../", true) %}</p>
 
 <h3>Added between {{ old_os.long_name }} and {{ new_os.long_name }}</h4>
 
 <ul class="symbols added">
 {% for symbol in added_symbols %}
-<li>{% call macros::output_symbol(symbol, "../../../") %}</li>
+<li>{% call macros::output_symbol(symbol, "../../../../../") %}</li>
 {% endfor %}
 </ul>
 
@@ -22,7 +22,7 @@
 
 <ul class="symbols removed">
 {% for symbol in removed_symbols %}
-<li>{% call macros::output_symbol(symbol, "../../../") %}</li>
+<li>{% call macros::output_symbol(symbol, "../../../../../") %}</li>
 {% endfor %}
 </ul>
 
