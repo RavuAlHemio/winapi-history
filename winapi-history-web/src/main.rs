@@ -100,11 +100,35 @@ struct OperatingSystemPart {
     pub long_name: String,
     pub has_icon: bool,
 }
+impl OperatingSystemPart {
+    pub fn try_from_row(field_offset: usize, row: &Row<'_>) -> Result<Self, rusqlite::Error> {
+        let short_name: String = row.get(field_offset + 0)?;
+        let long_name: String = row.get(field_offset + 1)?;
+        let has_icon: bool = row.get(field_offset + 2)?;
+        let os_part = Self {
+            short_name,
+            long_name,
+            has_icon,
+        };
+        Ok(os_part)
+    }
+}
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct DllPart {
     pub path: String,
     pub secondary_platform: bool,
+}
+impl DllPart {
+    pub fn try_from_row(field_offset: usize, row: &Row<'_>) -> Result<Self, rusqlite::Error> {
+        let path: String = row.get(field_offset + 0)?;
+        let secondary_platform: bool = row.get(field_offset + 1)?;
+        let dll_part = Self {
+            path,
+            secondary_platform,
+        };
+        Ok(dll_part)
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -158,6 +182,49 @@ impl SymbolPart {
             Self::DllOrdinal { dll_name, ordinal, .. }
                 => Some((dll_name.as_str(), *ordinal)),
         }
+    }
+
+    pub fn try_from_row(field_offset: usize, row: &Row<'_>) -> Result<Self, rusqlite::Error> {
+        let raw_name: Option<String> = row.get(field_offset + 0)?;
+        let friendly_name: Option<String> = row.get(field_offset + 1)?;
+        let dll_name: Option<String> = row.get(field_offset + 2)?;
+        let ordinal: Option<u64> = row.get(field_offset + 3)?;
+
+        let sym_part = if let Some(rn) = raw_name {
+            SymbolPart::Named {
+                raw_name: rn,
+                friendly_name,
+            }
+        } else if let Some(dn) = dll_name {
+            SymbolPart::DllOrdinal {
+                dll_name: dn,
+                ordinal: ordinal.unwrap(),
+                friendly_name,
+            }
+        } else {
+            panic!("symbol that is neither named nor ordinal");
+        };
+        Ok(sym_part)
+    }
+
+    pub fn try_named_from_row(field_offset: usize, row: &Row<'_>) -> Result<Self, rusqlite::Error> {
+        let raw_name: String = row.get(field_offset + 0)?;
+        let friendly_name: Option<String> = row.get(field_offset + 1)?;
+        Ok(SymbolPart::Named {
+            raw_name,
+            friendly_name,
+        })
+    }
+
+    pub fn try_ordinal_from_row(field_offset: usize, row: &Row<'_>) -> Result<Self, rusqlite::Error> {
+        let dll_name: String = row.get(field_offset + 0)?;
+        let ordinal: u64 = row.get(field_offset + 1)?;
+        let friendly_name: Option<String> = row.get(field_offset + 2)?;
+        Ok(SymbolPart::DllOrdinal {
+            dll_name,
+            ordinal,
+            friendly_name,
+        })
     }
 }
 
@@ -333,14 +400,7 @@ fn os_page(os_name: &str) -> TemplateResponder<OsTemplate> {
         [os_name],
         |row| {
             let os_id: i64 = row.get(0)?;
-            let short_name: String = row.get(1)?;
-            let long_name: String = row.get(2)?;
-            let has_icon: bool = row.get(3)?;
-            let os_part = OperatingSystemPart {
-                short_name,
-                long_name,
-                has_icon,
-            };
+            let os_part = OperatingSystemPart::try_from_row(1, row)?;
             Ok((os_id, os_part))
         },
     );
@@ -370,14 +430,7 @@ fn os_page(os_name: &str) -> TemplateResponder<OsTemplate> {
                 1
         ",
         [os_id],
-        |row| {
-            let path: String = row.get(0)?;
-            let secondary_platform: bool = row.get(1)?;
-            Ok(DllPart {
-                path,
-                secondary_platform,
-            })
-        },
+        |row| DllPart::try_from_row(0, row),
     );
     let Some(dlls) = dlls_opt
         else { return TemplateResponder::Failure };
@@ -408,15 +461,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
         [os_name],
         |row| {
             let os_id: i64 = row.get(0)?;
-            let short_name: String = row.get(1)?;
-            let long_name: String = row.get(2)?;
-            let has_icon: bool = row.get(3)?;
-
-            let os_part = OperatingSystemPart {
-                short_name,
-                long_name,
-                has_icon,
-            };
+            let os_part = OperatingSystemPart::try_from_row(1, row)?;
             Ok((os_id, os_part))
         },
     );
@@ -440,12 +485,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
         [dll_name],
         |row| {
             let dll_id: i64 = row.get(0)?;
-            let path: String = row.get(1)?;
-            let secondary_platform: bool = row.get(2)?;
-            let dll_part = DllPart {
-                path,
-                secondary_platform,
-            };
+            let dll_part = DllPart::try_from_row(1, row)?;
             Ok((dll_id, dll_part))
         },
     );
@@ -480,25 +520,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
                 4
         ",
         [os_id, dll_id],
-        |row| {
-            let raw_name: Option<String> = row.get(0)?;
-            let friendly_name: Option<String> = row.get(1)?;
-            let dll_name: Option<String> = row.get(2)?;
-            let ordinal: Option<u64> = row.get(3)?;
-
-            Ok(if let Some(rn) = raw_name {
-                SymbolPart::Named {
-                    raw_name: rn.clone(),
-                    friendly_name,
-                }
-            } else {
-                SymbolPart::DllOrdinal {
-                    dll_name: dll_name.unwrap(),
-                    ordinal: ordinal.unwrap(),
-                    friendly_name,
-                }
-            })
-        },
+        |row| SymbolPart::try_from_row(0, row),
     );
     let Some(symbols) = syms_opt
         else { return TemplateResponder::Failure };
@@ -533,14 +555,7 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
         [os_name],
         |row| {
             let os_id: i64 = row.get(0)?;
-            let short_name: String = row.get(1)?;
-            let long_name: String = row.get(2)?;
-            let has_icon: bool = row.get(3)?;
-            let os_part = OperatingSystemPart {
-                short_name,
-                long_name,
-                has_icon,
-            };
+            let os_part = OperatingSystemPart::try_from_row(1, row)?;
             Ok((os_id, os_part))
         },
     );
@@ -577,32 +592,11 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
         ",
         [os_id],
         |row| {
-            let raw_name: Option<String> = row.get(0)?;
-            let friendly_name: Option<String> = row.get(1)?;
-            let dll_name: Option<String> = row.get(2)?;
-            let ordinal: Option<u64> = row.get(3)?;
-            let dll_path: String = row.get(4)?;
-            let dll_secondary_platform: bool = row.get(5)?;
-
-            let symbol = if let Some(rn) = raw_name {
-                SymbolPart::Named {
-                    raw_name: rn.clone(),
-                    friendly_name,
-                }
-            } else {
-                SymbolPart::DllOrdinal {
-                    dll_name: dll_name.clone().unwrap(),
-                    ordinal: ordinal.clone().unwrap(),
-                    friendly_name,
-                }
-            };
-
+            let symbol_part = SymbolPart::try_from_row(0, row)?;
+            let dll_part = DllPart::try_from_row(4, row)?;
             Ok(OsSymbolPart {
-                dll: DllPart {
-                    path: dll_path,
-                    secondary_platform: dll_secondary_platform,
-                },
-                symbol,
+                dll: dll_part,
+                symbol: symbol_part,
             })
         },
     );
@@ -644,22 +638,9 @@ fn finish_dlls(db: &Connection, sym_id: i64, sym_part: SymbolPart, path_to_root:
         [sym_id],
         |row| {
             let os_id: i64 = row.get(0)?;
-            let os_short_name: String = row.get(1)?;
-            let os_long_name: String = row.get(2)?;
-            let os_has_icon: bool = row.get(3)?;
-            let dll_path: String = row.get(4)?;
-            let dll_secondary_platform: bool = row.get(5)?;
-
-            let os = OperatingSystemPart {
-                short_name: os_short_name,
-                long_name: os_long_name,
-                has_icon: os_has_icon,
-            };
-            let dll = DllPart {
-                path: dll_path,
-                secondary_platform: dll_secondary_platform,
-            };
-            Ok((os_id, os, dll))
+            let os_part = OperatingSystemPart::try_from_row(1, row)?;
+            let dll_part = DllPart::try_from_row(4, row)?;
+            Ok((os_id, os_part, dll_part))
         },
     );
     let dll_rows = match dll_rows_opt {
@@ -725,12 +706,7 @@ fn symbol_page(sym_raw_name: &str) -> TemplateResponder<SymbolTemplate> {
         [sym_raw_name],
         |row| {
             let sym_id: i64 = row.get(0)?;
-            let raw_name: String = row.get(1)?;
-            let friendly_name: Option<String> = row.get(2)?;
-            let sym_part = SymbolPart::Named {
-                raw_name,
-                friendly_name,
-            };
+            let sym_part = SymbolPart::try_named_from_row(1, row)?;
             Ok((sym_id, sym_part))
         },
     );
@@ -766,14 +742,7 @@ fn dll_ordinal_symbol_page(dll_name: &str, ordinal: usize) -> TemplateResponder<
         (dll_name, ordinal),
         |row| {
             let sym_id: i64 = row.get(0)?;
-            let dll_name: String = row.get(1)?;
-            let ordinal: u64 = row.get(2)?;
-            let friendly_name: Option<String> = row.get(3)?;
-            let sym_part = SymbolPart::DllOrdinal {
-                dll_name,
-                ordinal,
-                friendly_name,
-            };
+            let sym_part = SymbolPart::try_ordinal_from_row(1, row)?;
             Ok((sym_id, sym_part))
         },
     );
@@ -805,12 +774,7 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
         [dll_name],
         |row| {
             let dll_id: i64 = row.get(0)?;
-            let path: String = row.get(1)?;
-            let secondary_platform: bool = row.get(2)?;
-            let dll_part = DllPart {
-                path,
-                secondary_platform,
-            };
+            let dll_part = DllPart::try_from_row(1, row)?;
             Ok((dll_id, dll_part))
         },
     );
@@ -847,24 +811,8 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
         [dll_id],
         |row| {
             let sym_id: i64 = row.get(0)?;
-            let raw_name: Option<String> = row.get(1)?;
-            let friendly_name: Option<String> = row.get(2)?;
-            let dll_name: Option<String> = row.get(3)?;
-            let ordinal: Option<u64> = row.get(4)?;
-
-            let symbol = if let Some(rn) = raw_name {
-                SymbolPart::Named {
-                    raw_name: rn.clone(),
-                    friendly_name,
-                }
-            } else {
-                SymbolPart::DllOrdinal {
-                    dll_name: dll_name.unwrap(),
-                    ordinal: ordinal.unwrap(),
-                    friendly_name,
-                }
-            };
-            Ok((sym_id, symbol))
+            let sym_part = SymbolPart::try_from_row(1, row)?;
+            Ok((sym_id, sym_part))
         },
     );
     let Some(syms) = syms_opt
@@ -893,16 +841,7 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
         let oses_opt = query_database(
             &mut os_statement,
             [sym_id],
-            |row| {
-                let short_name: String = row.get(0)?;
-                let long_name: String = row.get(1)?;
-                let has_icon: bool = row.get(2)?;
-                Ok(OperatingSystemPart {
-                    short_name,
-                    long_name,
-                    has_icon,
-                })
-            },
+            |row| OperatingSystemPart::try_from_row(0, row),
         );
         let Some(oses) = oses_opt
             else { return TemplateResponder::Failure };
@@ -942,15 +881,7 @@ fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListT
                 raw_name
         ",
         (prefix_len_chars, sym_raw_prefix),
-        |row| {
-            let raw_name: String = row.get(0)?;
-            let friendly_name: Option<String> = row.get(1)?;
-            let sym_part = SymbolPart::Named {
-                raw_name,
-                friendly_name,
-            };
-            Ok(sym_part)
-        },
+        |row| SymbolPart::try_named_from_row(0, row),
     );
     let symbols = match sym_info_rows_opt {
         None => return TemplateResponder::Failure,
@@ -990,17 +921,7 @@ fn ordinal_only_funcs_page(dll_path_prefix: &str) -> TemplateResponder<Alphabeti
                 3 ASC NULLS LAST, 1, 2
         ",
         (dll_path_prefix_len, dll_path_prefix),
-        |row| {
-            let dll_name: String = row.get(0)?;
-            let ordinal: u64 = row.get(1)?;
-            let friendly_name: Option<String> = row.get(2)?;
-            let sym_part = SymbolPart::DllOrdinal {
-                dll_name,
-                ordinal,
-                friendly_name,
-            };
-            Ok(sym_part)
-        },
+        |row| SymbolPart::try_ordinal_from_row(0, row),
     );
     let symbols = match sym_info_rows_opt {
         None => return TemplateResponder::Failure,
@@ -1047,14 +968,8 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
 
     let os_ify = |row: &Row<'_>| {
         let os_id: i64 = row.get(0)?;
-        let short_name: String = row.get(1)?;
-        let long_name: String = row.get(2)?;
-            let has_icon: bool = row.get(3)?;
-        Ok((os_id, OperatingSystemPart {
-            short_name,
-            long_name,
-            has_icon,
-        }))
+        let os_part = OperatingSystemPart::try_from_row(1, row)?;
+        Ok((os_id, os_part))
     };
 
     // find old OS
@@ -1164,35 +1079,11 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
     let Some(mut symbol_diff_stmt) = prepare(&db, SYMBOL_DIFF_QUERY)
         else { return TemplateResponder::Failure };
 
-    let symbol_ify = |row: &Row<'_>| {
-        let raw_name: Option<String> = row.get(0)?;
-        let friendly_name: Option<String> = row.get(1)?;
-        let dll_name: Option<String> = row.get(2)?;
-        let ordinal: Option<u64> = row.get(3)?;
-
-        let sym_part = if let Some(rn) = raw_name {
-            SymbolPart::Named {
-                raw_name: rn,
-                friendly_name,
-            }
-        } else if let Some(dn) = dll_name {
-            let ord = ordinal.unwrap();
-            SymbolPart::DllOrdinal {
-                dll_name: dn,
-                ordinal: ord,
-                friendly_name,
-            }
-        } else {
-            panic!("symbol that is neither named nor ordinal");
-        };
-        Ok(sym_part)
-    };
-
     // find symbols which are in old but not in new
     let removed_symbol_rows_opt = query_database(
         &mut symbol_diff_stmt,
         [old_os_id, new_os_id],
-        symbol_ify,
+        |row| SymbolPart::try_from_row(0, row),
     );
     let removed_symbols = match removed_symbol_rows_opt {
         None => return TemplateResponder::Failure,
@@ -1203,7 +1094,7 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
     let added_symbols_rows_opt = query_database(
         &mut symbol_diff_stmt,
         [new_os_id, old_os_id],
-        symbol_ify,
+        |row| SymbolPart::try_from_row(0, row),
     );
     let added_symbols = match added_symbols_rows_opt {
         None => return TemplateResponder::Failure,
@@ -1242,14 +1133,8 @@ fn compare_os_dll(old_os: &str, new_os: &str, dll: &str) -> TemplateResponder<Co
 
     let os_ify = |row: &Row<'_>| {
         let os_id: i64 = row.get(0)?;
-        let short_name: String = row.get(1)?;
-        let long_name: String = row.get(2)?;
-            let has_icon: bool = row.get(3)?;
-        Ok((os_id, OperatingSystemPart {
-            short_name,
-            long_name,
-            has_icon,
-        }))
+        let os_part = OperatingSystemPart::try_from_row(1, row)?;
+        Ok((os_id, os_part))
     };
 
     // find old OS
@@ -1352,35 +1237,11 @@ fn compare_os_dll(old_os: &str, new_os: &str, dll: &str) -> TemplateResponder<Co
     let Some(mut symbol_diff_stmt) = prepare(&db, SYMBOL_DIFF_QUERY)
         else { return TemplateResponder::Failure };
 
-    let symbol_ify = |row: &Row<'_>| {
-        let raw_name: Option<String> = row.get(0)?;
-        let friendly_name: Option<String> = row.get(1)?;
-        let dll_name: Option<String> = row.get(2)?;
-        let ordinal: Option<u64> = row.get(3)?;
-
-        let sym_part = if let Some(rn) = raw_name {
-            SymbolPart::Named {
-                raw_name: rn,
-                friendly_name,
-            }
-        } else if let Some(dn) = dll_name {
-            let ord = ordinal.unwrap();
-            SymbolPart::DllOrdinal {
-                dll_name: dn,
-                ordinal: ord,
-                friendly_name,
-            }
-        } else {
-            panic!("symbol that is neither named nor ordinal");
-        };
-        Ok(sym_part)
-    };
-
     // find symbols which are in old but not in new
     let removed_symbol_rows_opt = query_database(
         &mut symbol_diff_stmt,
         [old_os_id, new_os_id, dll_id],
-        symbol_ify,
+        |row| SymbolPart::try_from_row(0, row),
     );
     let removed_symbols = match removed_symbol_rows_opt {
         None => return TemplateResponder::Failure,
@@ -1391,7 +1252,7 @@ fn compare_os_dll(old_os: &str, new_os: &str, dll: &str) -> TemplateResponder<Co
     let added_symbols_rows_opt = query_database(
         &mut symbol_diff_stmt,
         [new_os_id, old_os_id, dll_id],
-        symbol_ify,
+        |row| SymbolPart::try_from_row(0, row),
     );
     let added_symbols = match added_symbols_rows_opt {
         None => return TemplateResponder::Failure,
@@ -1428,16 +1289,7 @@ fn root() -> TemplateResponder<RootTemplate> {
                 2
         ",
         [],
-        |row| {
-            let short_name: String = row.get(0)?;
-            let long_name: String = row.get(1)?;
-            let has_icon: bool = row.get(2)?;
-            Ok(OperatingSystemPart {
-                short_name,
-                long_name,
-                has_icon,
-            })
-        },
+        |row| OperatingSystemPart::try_from_row(0, row),
     );
     let Some(operating_systems) = operating_systems_opt
         else { return TemplateResponder::Failure };
