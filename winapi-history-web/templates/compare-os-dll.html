@@ -1,0 +1,29 @@
+{% extends "_base.html" %}
+{% import "_macros.html" as macros %}
+
+{% block title %}Comparing {{ dll_path }} Symbols between {{ old_os.long_name }} and {{ new_os.long_name }}{% endblock %}
+
+{% block body %}
+<h1>Windows APIs</h1>
+
+<h2>Comparing {{ dll_path }} Symbols between {{ old_os.long_name }} and {{ new_os.long_name }}</h2>
+
+<p>{% call macros::output_os(old_os, "../../../", true) %} &rArr; {% call macros::output_os(new_os, "../../../", true) %}</p>
+
+<h3>Added between {{ old_os.long_name }} and {{ new_os.long_name }}</h4>
+
+<ul class="symbols added">
+{% for symbol in added_symbols %}
+<li>{% call macros::output_symbol(symbol, "../../../") %}</li>
+{% endfor %}
+</ul>
+
+<h3>Removed between {{ old_os.long_name }} and {{ new_os.long_name }}</h4>
+
+<ul class="symbols removed">
+{% for symbol in removed_symbols %}
+<li>{% call macros::output_symbol(symbol, "../../../") %}</li>
+{% endfor %}
+</ul>
+
+{% endblock %}

@@ -84,6 +84,16 @@ struct CompareOsTemplate {
     pub added_symbols: Vec<SymbolPart>,
 }
 
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
+#[template(path = "compare-os-dll.html")]
+struct CompareOsDllTemplate {
+    pub old_os: OperatingSystemPart,
+    pub new_os: OperatingSystemPart,
+    pub dll_path: String,
+    pub removed_symbols: Vec<SymbolPart>,
+    pub added_symbols: Vec<SymbolPart>,
+}
+
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct OperatingSystemPart {
     pub short_name: String,
@@ -1211,6 +1221,193 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
     TemplateResponder::Template(template)
 }
 
+#[rocket::get("/os/<old_os>/compare/<new_os>/dll/<dll>")]
+fn compare_os_dll(old_os: &str, new_os: &str, dll: &str) -> TemplateResponder<CompareOsDllTemplate> {
+    let Some(db) = connect_to_database()
+        else { return TemplateResponder::Failure };
+
+    const FIND_OS_QUERY: &str = "
+        SELECT
+            os_id,
+            short_name,
+            COALESCE(long_name, short_name),
+            has_icon
+        FROM
+            operating_systems
+        WHERE
+            short_name = ?1
+    ";
+    let Some(mut find_os_stmt) = prepare(&db, FIND_OS_QUERY)
+        else { return TemplateResponder::Failure };
+
+    let os_ify = |row: &Row<'_>| {
+        let os_id: i64 = row.get(0)?;
+        let short_name: String = row.get(1)?;
+        let long_name: String = row.get(2)?;
+            let has_icon: bool = row.get(3)?;
+        Ok((os_id, OperatingSystemPart {
+            short_name,
+            long_name,
+            has_icon,
+        }))
+    };
+
+    // find old OS
+    let old_rows_res = query_database(
+        &mut find_os_stmt,
+        [old_os],
+        os_ify,
+    );
+    let (old_os_id, old_os_part) = match old_rows_res {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(mut v) => v.swap_remove(0),
+    };
+
+    // find new OS
+    let new_rows_res = query_database(
+        &mut find_os_stmt,
+        [new_os],
+        os_ify,
+    );
+    let (new_os_id, new_os_part) = match new_rows_res {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(mut v) => v.swap_remove(0),
+    };
+
+    // find DLL
+    const DLL_QUERY: &str = "
+        SELECT
+            dll.dll_id,
+            dll.path
+        FROM
+            dlls dll
+        WHERE
+            dll.path = ?1
+            AND EXISTS (
+                SELECT 1
+                FROM symbol_dll_os sdo_old
+                WHERE sdo_old.os_id = ?2
+                AND sdo_old.dll_id = dll.dll_id
+            )
+            AND EXISTS (
+                SELECT 1
+                FROM symbol_dll_os sdo_new
+                WHERE sdo_new.os_id = ?3
+                AND sdo_new.dll_id = dll.dll_id
+            )
+    ";
+    let Some(mut dll_stmt) = prepare(&db, DLL_QUERY)
+        else { return TemplateResponder::Failure };
+
+    let dll_ify = |row: &Row<'_>| {
+        let dll_id: i64 = row.get(0)?;
+        let dll_path: String = row.get(1)?;
+        Ok((dll_id, dll_path))
+    };
+
+    // find DLL
+    let dll_res = query_database(
+        &mut dll_stmt,
+        (dll, old_os_id, new_os_id),
+        dll_ify,
+    );
+    let (dll_id, dll_path) = match dll_res {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(mut v) => v.swap_remove(0),
+    };
+
+    // prepare a symbol-difference query, for both named and ordinal symbols
+    const SYMBOL_DIFF_QUERY: &str = "
+        SELECT
+            sym.raw_name,
+            sym.friendly_name,
+            sym.dll_name,
+            sym.ordinal
+        FROM
+            symbols sym
+        WHERE
+            EXISTS (
+                SELECT 1
+                FROM symbol_dll_os y_sdo
+                WHERE y_sdo.os_id = ?1
+                AND y_sdo.dll_id = ?3
+                AND y_sdo.sym_id = sym.sym_id
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM symbol_dll_os n_sdo
+                WHERE n_sdo.os_id = ?2
+                AND n_sdo.dll_id = ?3
+                AND n_sdo.sym_id = sym.sym_id
+            )
+        ORDER BY
+            1 ASC NULLS LAST,
+            2 ASC NULLS LAST,
+            3,
+            4
+    ";
+    let Some(mut symbol_diff_stmt) = prepare(&db, SYMBOL_DIFF_QUERY)
+        else { return TemplateResponder::Failure };
+
+    let symbol_ify = |row: &Row<'_>| {
+        let raw_name: Option<String> = row.get(0)?;
+        let friendly_name: Option<String> = row.get(1)?;
+        let dll_name: Option<String> = row.get(2)?;
+        let ordinal: Option<u64> = row.get(3)?;
+
+        let sym_part = if let Some(rn) = raw_name {
+            SymbolPart::Named {
+                raw_name: rn,
+                friendly_name,
+            }
+        } else if let Some(dn) = dll_name {
+            let ord = ordinal.unwrap();
+            SymbolPart::DllOrdinal {
+                dll_name: dn,
+                ordinal: ord,
+                friendly_name,
+            }
+        } else {
+            panic!("symbol that is neither named nor ordinal");
+        };
+        Ok(sym_part)
+    };
+
+    // find symbols which are in old but not in new
+    let removed_symbol_rows_opt = query_database(
+        &mut symbol_diff_stmt,
+        [old_os_id, new_os_id, dll_id],
+        symbol_ify,
+    );
+    let removed_symbols = match removed_symbol_rows_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) => v,
+    };
+
+    // find symbols which are in new but not old
+    let added_symbols_rows_opt = query_database(
+        &mut symbol_diff_stmt,
+        [new_os_id, old_os_id, dll_id],
+        symbol_ify,
+    );
+    let added_symbols = match added_symbols_rows_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) => v,
+    };
+
+    let template = CompareOsDllTemplate {
+        old_os: old_os_part,
+        new_os: new_os_part,
+        dll_path,
+        added_symbols,
+        removed_symbols,
+    };
+    TemplateResponder::Template(template)
+}
+
 
 #[rocket::get("/")]
 fn root() -> TemplateResponder<RootTemplate> {
@@ -1339,5 +1536,6 @@ fn rocket_launcher() -> _ {
         dll_page,
         compare_os,
         compare_os_redirect,
+        compare_os_dll,
     ])
 }
