@@ -103,8 +103,15 @@ struct OperatingSystemPart {
 impl OperatingSystemPart {
     pub fn try_from_row(field_offset: usize, row: &Row<'_>) -> Result<Self, rusqlite::Error> {
         let short_name: String = row.get(field_offset + 0)?;
-        let long_name: String = row.get(field_offset + 1)?;
+        let long_name_opt: Option<String> = row.get(field_offset + 1)?;
         let has_icon: bool = row.get(field_offset + 2)?;
+
+        let long_name = if let Some(ln) = long_name_opt {
+            ln
+        } else {
+            short_name.clone()
+        };
+
         let os_part = Self {
             short_name,
             long_name,
