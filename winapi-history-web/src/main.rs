@@ -40,6 +40,7 @@ struct OsTemplate {
 #[template(path = "dll.html")]
 struct DllTemplate {
     pub dll: DllPart,
+    pub dll_operating_systems: Vec<OperatingSystemPart>,
     pub symbols_oses: Vec<(SymbolPart, Vec<OperatingSystemPart>)>,
 }
 
@@ -791,6 +792,34 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
         Some(mut v) => v.swap_remove(0),
     };
 
+    // find the OSes that have this DLL
+    let dll_oses_opt = prepare_and_query_database(
+        &db,
+        "
+            SELECT
+                os.short_name,
+                os.long_name,
+                os.has_icon
+            FROM
+                operating_systems os
+            WHERE
+                EXISTS (
+                    SELECT 1
+                    FROM symbol_dll_os sdo
+                    WHERE sdo.dll_id = ?1
+                    AND sdo.os_id = os.os_id
+                )
+            ORDER BY
+                os.release_date ASC NULLS LAST
+        ",
+        [dll_id],
+        |row| OperatingSystemPart::try_from_row(0, row),
+    );
+    let dll_oses = match dll_oses_opt {
+        Some(v) => v,
+        None => return TemplateResponder::Failure,
+    };
+
     // find the symbols in the DLL, named or ordinal
     let syms_opt = prepare_and_query_database(
         &db,
@@ -857,6 +886,7 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
 
     let template = DllTemplate {
         dll: dll_part,
+        dll_operating_systems: dll_oses,
         symbols_oses,
     };
     TemplateResponder::Template(template)
@@ -950,6 +980,18 @@ fn compare_os_redirect(old: &str, new: &str) -> Redirect {
     let old_percent: String = utf8_percent_encode(old, &URL_UNRESERVED).collect();
     let new_percent: String = utf8_percent_encode(new, &URL_UNRESERVED).collect();
     let new_url = format!("os/{}/compare/{}", old_percent, new_percent);
+
+    Redirect::permanent(new_url)
+}
+
+#[rocket::get("/dll/<dll>/compare-os?<old>&<new>")]
+fn compare_os_dll_redirect(old: &str, new: &str, dll: &str) -> Redirect {
+    // construct a permanent redirect to our preferred URL
+
+    let old_percent: String = utf8_percent_encode(old, &URL_UNRESERVED).collect();
+    let new_percent: String = utf8_percent_encode(new, &URL_UNRESERVED).collect();
+    let dll_percent: String = utf8_percent_encode(dll, &URL_UNRESERVED).collect();
+    let new_url = format!("../../os/{}/compare/{}/dll/{}", old_percent, new_percent, dll_percent);
 
     Redirect::permanent(new_url)
 }
@@ -1396,5 +1438,6 @@ fn rocket_launcher() -> _ {
         compare_os,
         compare_os_redirect,
         compare_os_dll,
+        compare_os_dll_redirect,
     ])
 }

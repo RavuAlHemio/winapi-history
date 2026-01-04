@@ -26,4 +26,24 @@
 {% endfor %}
 </ul>
 
+<h3>Compare Between OSes</h3>
+
+<form action="{{ dll.path|urlencode_strict }}/compare-os" method="get">
+<p>
+  Compare the change in API surface between
+  <select name="old" required="required">
+    {% for os in dll_operating_systems %}
+    <option value="{{ os.short_name }}">{{ os.long_name }}</option>
+    {% endfor %}
+  </select>
+  and
+  <select name="new" required="required">
+    {% for os in dll_operating_systems %}
+    <option value="{{ os.short_name }}">{{ os.long_name }}</option>
+    {% endfor %}
+  </select>
+  <input type="submit" value="compare" />
+</p>
+</form>
+
 {% endblock %}
