@@ -1,26 +1,46 @@
 {% extends "_base.html" %}
 {% import "_macros.html" as macros %}
 
-{% block title %}Comparing Symbols between {{ old_os.long_name }} and {{ new_os.long_name }}{% endblock %}
+{% block title %}Comparing API Profile between {{ old_os.long_name }} and {{ new_os.long_name }}{% endblock %}
 
 {% block body %}
 <h1>Windows APIs</h1>
 
-<h2>Comparing Symbols between {{ old_os.long_name }} and {{ new_os.long_name }}</h2>
+<h2>Comparing API Profile between {{ old_os.long_name }} and {{ new_os.long_name }}</h2>
 
 <p>{% call macros::output_os(old_os, "../../../", true) %} &rArr; {% call macros::output_os(new_os, "../../../", true) %}</p>
 
-<h3>Added between {{ old_os.long_name }} and {{ new_os.long_name }}</h3>
+<h3>DLLs</h3>
 
-<ul class="added">
+<h4>Added between {{ old_os.long_name }} and {{ new_os.long_name }}</h4>
+
+<ul class="dlls added">
+{% for dll in added_dlls %}
+<li><a href="../../../dlls/{{ dll|urlencode_strict }}">{{ dll }}</a></li>
+{% endfor %}
+</ul>
+
+<h4>Removed between {{ old_os.long_name }} and {{ new_os.long_name }}</h4>
+
+<ul class="dlls removed">
+{% for dll in removed_dlls %}
+<li><a href="../../../dlls/{{ dll|urlencode_strict }}">{{ dll }}</a></li>
+{% endfor %}
+</ul>
+
+<h3>Symbols</h3>
+
+<h4>Added between {{ old_os.long_name }} and {{ new_os.long_name }}</h4>
+
+<ul class="symbols added">
 {% for symbol in added_symbols %}
 <li>{% call macros::output_symbol(symbol, "../../../") %}</li>
 {% endfor %}
 </ul>
 
-<h3>Removed between {{ old_os.long_name }} and {{ new_os.long_name }}</h3>
+<h4>Removed between {{ old_os.long_name }} and {{ new_os.long_name }}</h4>
 
-<ul class="removed">
+<ul class="symbols removed">
 {% for symbol in removed_symbols %}
 <li>{% call macros::output_symbol(symbol, "../../../") %}</li>
 {% endfor %}

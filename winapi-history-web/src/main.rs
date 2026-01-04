@@ -78,6 +78,8 @@ struct AlphabeticalSymbolListTemplate {
 struct CompareOsTemplate {
     pub old_os: OperatingSystemPart,
     pub new_os: OperatingSystemPart,
+    pub removed_dlls: Vec<String>,
+    pub added_dlls: Vec<String>,
     pub removed_symbols: Vec<SymbolPart>,
     pub added_symbols: Vec<SymbolPart>,
 }
@@ -1069,6 +1071,58 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
         Some(mut v) => v.swap_remove(0),
     };
 
+    // prepare a DLL-difference query
+    const DLL_DIFF_QUERY: &str = "
+        SELECT
+            dll.path
+        FROM
+            dlls dll
+        WHERE
+            EXISTS (
+                SELECT 1
+                FROM symbol_dll_os y_sdo
+                WHERE y_sdo.os_id = ?1
+                AND y_sdo.dll_id = dll.dll_id
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM symbol_dll_os n_sdo
+                WHERE n_sdo.os_id = ?2
+                AND n_sdo.dll_id = dll.dll_id
+            )
+        ORDER BY
+            1
+    ";
+    let Some(mut dll_diff_stmt) = prepare(&db, DLL_DIFF_QUERY)
+        else { return TemplateResponder::Failure };
+
+    let dll_ify = |row: &Row<'_>| {
+        let dll_path: String = row.get(0)?;
+        Ok(dll_path)
+    };
+
+    // find DLLs which are in old but not in new
+    let removed_dlls_opt = query_database(
+        &mut dll_diff_stmt,
+        [old_os_id, new_os_id],
+        dll_ify,
+    );
+    let removed_dlls = match removed_dlls_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) => v,
+    };
+
+    // find DLLs which are in new but not in old
+    let added_dlls_opt = query_database(
+        &mut dll_diff_stmt,
+        [new_os_id, old_os_id],
+        dll_ify,
+    );
+    let added_dlls = match added_dlls_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) => v,
+    };
+
     // prepare a symbol-difference query, for both named and ordinal symbols
     const SYMBOL_DIFF_QUERY: &str = "
         SELECT
@@ -1149,6 +1203,8 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
     let template = CompareOsTemplate {
         old_os: old_os_part,
         new_os: new_os_part,
+        added_dlls,
+        removed_dlls,
         added_symbols,
         removed_symbols,
     };
