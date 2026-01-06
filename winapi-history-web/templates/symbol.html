@@ -8,6 +8,13 @@
 
 <h2>Symbol {{ symbol.friendly_name_or_generate() }}</h2>
 
+{% if symbol.is_meta_func() %}
+<p class="meta-func">
+  This symbol serves a meta-API. Multiple DLLs may have such a symbol with wildly differing
+  implementations.
+</p>
+{% endif %}
+
 <p>Available in the following operating systems:</p>
 
 <ul>
