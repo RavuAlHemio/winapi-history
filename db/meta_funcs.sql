@@ -7,4 +7,5 @@ UPDATE symbols SET is_meta_func=1 WHERE raw_name IN ('DllRegisterServer', 'DllUn
 UPDATE symbols SET is_meta_func=1 WHERE raw_name = 'DriverProc'; -- executed by kernel
 UPDATE symbols SET is_meta_func=1 WHERE raw_name = 'GetProxyDllInfo'; -- called by COM servers on proxy DLLs
 UPDATE symbols SET is_meta_func=1 WHERE raw_name = 'KbdLayerDescriptor'; -- keyboard layout in a keyboard layout DLL
+UPDATE symbols SET is_meta_func=1 WHERE raw_name = 'KbdNlsLayerDescriptor'; -- keyboard geometry in a keyboard geometry DLL
 UPDATE symbols SET is_meta_func=1 WHERE raw_name = 'ServiceMain'; -- executed by service manager
