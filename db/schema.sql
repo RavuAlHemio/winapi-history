@@ -4,12 +4,20 @@
 --
 -- named symbols may also have ordinals within their DLL, but those are subject to change between
 -- versions; such ordinals are stored in symbol_dll_os as a curiosity
+--
+-- friendly_name is either the demangled C++ name or a symbolic name for an ordinal-only function,
+-- if known
+--
+-- is_meta_func is 1 for functions that are not part of an API but of a meta-API (e.g. "create an
+-- instance of the class with the name specified as a string at runtime"); it might make sense to
+-- hide/ignore these in most cases
 CREATE TABLE symbols
 ( sym_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT
 , raw_name TEXT NULL
 , dll_name TEXT NULL
 , ordinal INTEGER NULL
 , friendly_name TEXT NULL DEFAULT NULL
+, is_meta_func INTEGER NOT NULL DEFAULT 0 CHECK(is_meta_func IN (0, 1))
 , UNIQUE (raw_name)
 , UNIQUE (dll_name, ordinal)
 , CHECK ( (raw_name IS NOT NULL AND dll_name IS NULL AND ordinal IS NULL)
@@ -56,7 +64,7 @@ CREATE INDEX idx_sdo_o ON symbol_dll_os (os_id);
 CREATE TABLE schema_version
 ( ver INTEGER NOT NULL
 );
-INSERT INTO schema_version (ver) VALUES (2);
+INSERT INTO schema_version (ver) VALUES (3);
 CREATE TRIGGER trig_schema_version_no_insert
     BEFORE INSERT ON schema_version
     BEGIN
