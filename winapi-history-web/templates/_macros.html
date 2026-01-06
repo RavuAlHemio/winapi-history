@@ -9,7 +9,7 @@
 {%- endmacro -%}
 
 {%- macro output_symbol(symbol, path_prefix) -%}
-<a class="sym" href="{%
+<a class="sym{% if symbol.is_meta_func() %} meta-func{% endif %}" href="{%
   if let Some((dll_name, ordinal)) = symbol.dll_pair()
 %}{{ path_prefix }}symbol/dll/{{ dll_name|urlencode_strict }}/ordinal/{{ ordinal }}{%
   else if let Some(raw_name) = symbol.raw_name()

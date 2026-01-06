@@ -151,11 +151,13 @@ enum SymbolPart {
     Named {
         raw_name: String,
         friendly_name: Option<String>,
+        is_meta_func: bool,
     },
     DllOrdinal {
         dll_name: String,
         ordinal: u64,
         friendly_name: Option<String>, // `"<dll_name>#<ordinal>"` if not overridden
+        is_meta_func: bool,
     },
 }
 impl SymbolPart {
@@ -172,11 +174,11 @@ impl SymbolPart {
         match self {
             Self::Named { friendly_name: Some(f), .. }
                 => f.clone(),
-            Self::Named { friendly_name: None, raw_name }
+            Self::Named { friendly_name: None, raw_name, .. }
                 => raw_name.clone(),
             Self::DllOrdinal { friendly_name: Some(f), .. }
                 => f.clone(),
-            Self::DllOrdinal { friendly_name: None, dll_name, ordinal }
+            Self::DllOrdinal { friendly_name: None, dll_name, ordinal, .. }
                 => format!("{}#{}", dll_name, ordinal),
         }
     }
@@ -187,6 +189,15 @@ impl SymbolPart {
                 => Some(raw_name),
             Self::DllOrdinal { .. }
                 => None,
+        }
+    }
+
+    pub fn is_meta_func(&self) -> bool {
+        match self {
+            Self::Named { is_meta_func, .. }
+                => *is_meta_func,
+            Self::DllOrdinal { is_meta_func, .. }
+                => *is_meta_func,
         }
     }
 
@@ -204,17 +215,20 @@ impl SymbolPart {
         let friendly_name: Option<String> = row.get(field_offset + 1)?;
         let dll_name: Option<String> = row.get(field_offset + 2)?;
         let ordinal: Option<u64> = row.get(field_offset + 3)?;
+        let is_meta_func: bool = row.get(field_offset + 4)?;
 
         let sym_part = if let Some(rn) = raw_name {
             SymbolPart::Named {
                 raw_name: rn,
                 friendly_name,
+                is_meta_func,
             }
         } else if let Some(dn) = dll_name {
             SymbolPart::DllOrdinal {
                 dll_name: dn,
                 ordinal: ordinal.unwrap(),
                 friendly_name,
+                is_meta_func,
             }
         } else {
             panic!("symbol that is neither named nor ordinal");
@@ -225,9 +239,11 @@ impl SymbolPart {
     pub fn try_named_from_row(field_offset: usize, row: &Row<'_>) -> Result<Self, rusqlite::Error> {
         let raw_name: String = row.get(field_offset + 0)?;
         let friendly_name: Option<String> = row.get(field_offset + 1)?;
+        let is_meta_func: bool = row.get(field_offset + 2)?;
         Ok(SymbolPart::Named {
             raw_name,
             friendly_name,
+            is_meta_func,
         })
     }
 
@@ -235,10 +251,12 @@ impl SymbolPart {
         let dll_name: String = row.get(field_offset + 0)?;
         let ordinal: u64 = row.get(field_offset + 1)?;
         let friendly_name: Option<String> = row.get(field_offset + 2)?;
+        let is_meta_func: bool = row.get(field_offset + 3)?;
         Ok(SymbolPart::DllOrdinal {
             dll_name,
             ordinal,
             friendly_name,
+            is_meta_func,
         })
     }
 }
@@ -517,6 +535,7 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
     };
 
     // find the DLL's symbols in this OS, named and ordinal
+    // including meta-functions
     let syms_opt = prepare_and_query_database(
         &db,
         "
@@ -524,7 +543,8 @@ fn os_dll_page(os_name: &str, dll_name: &str) -> TemplateResponder<OsDllSymbolLi
                 sym.raw_name,
                 sym.friendly_name,
                 sym.dll_name,
-                sym.ordinal
+                sym.ordinal,
+                sym.is_meta_func
             FROM
                 dlls d
                 INNER JOIN symbol_dll_os sdo
@@ -586,7 +606,8 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
         Some(mut v) => v.swap_remove(0),
     };
 
-    // find all symbols available in this OS, named and ordinal
+    // find all symbols available in this OS, named and ordinal;
+    // no meta-functions though
     let symbol_rows_opt = prepare_and_query_database(
         &db,
         "
@@ -595,6 +616,7 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
                 sym.friendly_name,
                 sym.dll_name,
                 sym.ordinal,
+                sym.is_meta_func,
                 dll.path,
                 dll.secondary_platform
             FROM
@@ -605,6 +627,7 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
                     ON dll.dll_id = sdo.dll_id
             WHERE
                 sdo.os_id = ?1
+                AND sym.is_meta_func = 0
             ORDER BY
                 1 ASC NULLS LAST,
                 2 ASC NULLS LAST,
@@ -614,7 +637,7 @@ fn all_os_symbols(os_name: &str) -> TemplateResponder<OsSymbolListTemplate> {
         [os_id],
         |row| {
             let symbol_part = SymbolPart::try_from_row(0, row)?;
-            let dll_part = DllPart::try_from_row(4, row)?;
+            let dll_part = DllPart::try_from_row(5, row)?;
             Ok(OsSymbolPart {
                 dll: dll_part,
                 symbol: symbol_part,
@@ -718,7 +741,8 @@ fn symbol_page(sym_raw_name: &str) -> TemplateResponder<SymbolTemplate> {
             SELECT
                 sym_id,
                 raw_name,
-                friendly_name
+                friendly_name,
+                is_meta_func
             FROM
                 symbols
             WHERE
@@ -753,7 +777,8 @@ fn dll_ordinal_symbol_page(dll_name: &str, ordinal: usize) -> TemplateResponder<
                 sym_id,
                 dll_name,
                 ordinal,
-                friendly_name
+                friendly_name,
+                is_meta_func
             FROM
                 symbols
             WHERE
@@ -833,7 +858,8 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
         None => return TemplateResponder::Failure,
     };
 
-    // find the symbols in the DLL, named or ordinal
+    // find the symbols in the DLL, named or ordinal;
+    // meta-functions last
     let syms_opt = prepare_and_query_database(
         &db,
         "
@@ -842,7 +868,8 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
                 sym.raw_name,
                 sym.friendly_name,
                 sym.dll_name,
-                sym.ordinal
+                sym.ordinal,
+                sym.is_meta_func
             FROM
                 dlls d
                 INNER JOIN symbol_dll_os sdo
@@ -852,6 +879,7 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
             WHERE
                 d.dll_id = ?1
             ORDER BY
+                6,
                 2 ASC NULLS LAST,
                 3 ASC NULLS LAST,
                 4,
@@ -994,13 +1022,15 @@ fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListT
 
     let prefix_len_chars = sym_raw_prefix.chars().count();
 
-    // find the symbols with that raw-name prefix
+    // find the symbols with that raw-name prefix;
+    // no meta-functions though
     let sym_info_rows_opt = prepare_and_query_database(
         &db,
         "
             SELECT
                 raw_name,
-                friendly_name
+                friendly_name,
+                is_meta_func
             FROM
                 symbols
             WHERE
@@ -1009,6 +1039,7 @@ fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListT
                     SUBSTR(raw_name, 1, ?1) = ?2
                     OR SUBSTR(friendly_name, 1, ?1) = ?2
                 )
+                AND is_meta_func = 0
             ORDER BY
                 raw_name
         ",
@@ -1042,7 +1073,8 @@ fn ordinal_only_funcs_page(dll_path_prefix: &str) -> TemplateResponder<Alphabeti
             SELECT
                 dll_name,
                 ordinal,
-                friendly_name
+                friendly_name,
+                is_meta_func
             FROM
                 symbols
             WHERE
@@ -1193,16 +1225,19 @@ fn compare_os(old: &str, new: &str) -> TemplateResponder<CompareOsTemplate> {
     };
 
     // prepare a symbol-difference query, for both named and ordinal symbols
+    // but not for meta-functions
     const SYMBOL_DIFF_QUERY: &str = "
         SELECT
             sym.raw_name,
             sym.friendly_name,
             sym.dll_name,
-            sym.ordinal
+            sym.ordinal,
+            sym.is_meta_func
         FROM
             symbols sym
         WHERE
-            EXISTS (
+            sym.is_meta_func = 0
+            AND EXISTS (
                 SELECT 1
                 FROM symbol_dll_os y_sdo
                 WHERE y_sdo.os_id = ?1
@@ -1349,16 +1384,19 @@ fn compare_os_dll(old_os: &str, new_os: &str, dll: &str) -> TemplateResponder<Co
     };
 
     // prepare a symbol-difference query, for both named and ordinal symbols
+    // but not meta-functions
     const SYMBOL_DIFF_QUERY: &str = "
         SELECT
             sym.raw_name,
             sym.friendly_name,
             sym.dll_name,
-            sym.ordinal
+            sym.ordinal,
+            sym.is_meta_func
         FROM
             symbols sym
         WHERE
-            EXISTS (
+            sym.is_meta_func = 0
+            AND EXISTS (
                 SELECT 1
                 FROM symbol_dll_os y_sdo
                 WHERE y_sdo.os_id = ?1
