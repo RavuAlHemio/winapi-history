@@ -127,7 +127,7 @@ fn do_load(opts: LoadOpts) {
     }
 
     // migration-execution logic
-    const MAX_SUPPORTED_SCHEMA: i64 = 2;
+    const MAX_SUPPORTED_SCHEMA: i64 = 3;
     let schema_version: i64 = db.query_one(
         "SELECT ver FROM schema_version",
         [],
@@ -141,6 +141,11 @@ fn do_load(opts: LoadOpts) {
         eprintln!("updating database to schema version 2");
         db.execute_batch(include_str!("../../db/migrations/r0001_to_r0002.sql"))
             .expect("failed to update database schema from version 1 to 2");
+    }
+    if schema_version == 2 {
+        eprintln!("updating database to schema version 2");
+        db.execute_batch(include_str!("../../db/migrations/r0002_to_r0003.sql"))
+            .expect("failed to update database schema from version 2 to 3");
     }
     if schema_version > MAX_SUPPORTED_SCHEMA {
         eprintln!(
