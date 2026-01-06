@@ -25,6 +25,7 @@ const URL_UNRESERVED: &AsciiSet = &NON_ALPHANUMERIC
 #[template(path = "root.html")]
 struct RootTemplate {
     pub operating_systems: Vec<OperatingSystemPart>,
+    pub dll_start_chars: Vec<String>,
     pub func_start_chars: Vec<String>,
     pub ordinal_dll_start_chars: Vec<String>,
 }
@@ -65,6 +66,12 @@ struct SymbolTemplate {
     pub path_to_root: &'static str,
     pub symbol: SymbolPart,
     pub os_dlls: Vec<(OperatingSystemPart, Vec<DllPart>)>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
+#[template(path = "alpha-dll-list.html")]
+struct AlphabeticalDllListTemplate {
+    pub dll_parts: Vec<DllOsesPart>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Template)]
@@ -240,6 +247,12 @@ impl SymbolPart {
 struct OsSymbolPart {
     pub symbol: SymbolPart,
     pub dll: DllPart,
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct DllOsesPart {
+    pub dll: DllPart,
+    pub oses: Vec<OperatingSystemPart>,
 }
 
 
@@ -892,6 +905,88 @@ fn dll_page(dll_name: &str) -> TemplateResponder<DllTemplate> {
     TemplateResponder::Template(template)
 }
 
+#[rocket::get("/dlls/<dll_prefix>")]
+fn alpha_dll_page(dll_prefix: &str) -> TemplateResponder<AlphabeticalDllListTemplate> {
+    let Some(db) = connect_to_database()
+        else { return TemplateResponder::Failure };
+
+    let prefix_len_chars = dll_prefix.chars().count();
+
+    // find the DLLs with that prefix
+    let dlls_opt = prepare_and_query_database(
+        &db,
+        "
+            SELECT
+                dll_id,
+                path,
+                secondary_platform
+            FROM
+                dlls
+            WHERE
+                SUBSTR(path, 1, ?1) = ?2
+            ORDER BY
+                path
+        ",
+        (prefix_len_chars, dll_prefix),
+        |row| {
+            let dll_id: i64 = row.get(0)?;
+            let dll = DllPart::try_from_row(1, row)?;
+            let dll_oses_part = DllOsesPart {
+                dll,
+                oses: Vec::new(),
+            };
+            Ok((dll_id, dll_oses_part))
+        },
+    );
+    let mut dlls = match dlls_opt {
+        None => return TemplateResponder::Failure,
+        Some(v) if v.len() == 0 => return TemplateResponder::NotFound,
+        Some(v) => v,
+    };
+
+    // enrich with operating system info
+    const DLL_OS_QUERY: &str = "
+        SELECT
+            os.short_name,
+            os.long_name,
+            os.has_icon
+        FROM
+            operating_systems os
+        WHERE
+            EXISTS (
+                SELECT 1
+                FROM symbol_dll_os sdo
+                WHERE sdo.os_id = os.os_id
+                AND sdo.dll_id = ?1
+            )
+        ORDER BY
+            os.release_date ASC NULLS LAST
+    ";
+    let Some(mut dll_os_query) = prepare(&db, DLL_OS_QUERY)
+        else { return TemplateResponder::Failure };
+
+    for (dll_id, dll_oses_part) in &mut dlls {
+        let oses_opt = query_database(
+            &mut dll_os_query,
+            [*dll_id],
+            |row| OperatingSystemPart::try_from_row(0, row),
+        );
+        let Some(oses) = oses_opt
+            else { return TemplateResponder::Failure };
+        dll_oses_part.oses = oses;
+    }
+
+    let dll_parts = dlls
+        .into_iter()
+        .map(|(_dll_id, dll_part)| dll_part)
+        .collect();
+
+    let template = AlphabeticalDllListTemplate {
+        dll_parts,
+    };
+    TemplateResponder::Template(template)
+}
+
 #[rocket::get("/funcs/<sym_raw_prefix>")]
 fn funcs_page(sym_raw_prefix: &str) -> TemplateResponder<AlphabeticalSymbolListTemplate> {
     let Some(db) = connect_to_database()
@@ -1343,6 +1438,25 @@ fn root() -> TemplateResponder<RootTemplate> {
     let Some(operating_systems) = operating_systems_opt
         else { return TemplateResponder::Failure };
 
+    // obtain first characters of DLL paths
+    let dll_start_chars_opt = prepare_and_query_database(
+        &db,
+        "
+            SELECT DISTINCT
+                SUBSTR(path, 1, 1)
+            FROM dlls
+            ORDER BY
+                1
+        ",
+        [],
+        |row| {
+            let letter: String = row.get(0)?;
+            Ok(letter)
+        },
+    );
+    let Some(dll_start_chars) = dll_start_chars_opt
+        else { return TemplateResponder::Failure };
+
     // obtain first characters of function names
     // (raw names for named functions, friendly names for ordinal functions)
     // except "?", there's a lot of those due to C++ name mangling, take two characters in this case
@@ -1402,6 +1516,7 @@ fn root() -> TemplateResponder<RootTemplate> {
 
     let template = RootTemplate {
         operating_systems,
+        dll_start_chars,
         func_start_chars,
         ordinal_dll_start_chars,
     };
@@ -1434,6 +1549,7 @@ fn rocket_launcher() -> _ {
         dll_ordinal_symbol_page,
         funcs_page,
         ordinal_only_funcs_page,
+        alpha_dll_page,
         dll_page,
         compare_os,
         compare_os_redirect,

@@ -1,0 +1,33 @@
+{% extends "_base.html" %}
+{% import "_macros.html" as macros %}
+
+{% block title %}Alphabetical DLL List{% endblock %}
+
+{% block body %}
+<h1>Windows APIs</h1>
+
+<h2>Alphabetical DLL List</h2>
+
+<ul>
+{% for dll_part in dll_parts %}
+<li{%
+  if dll_part.dll.secondary_platform
+%} class="sec-plat"{%
+  endif
+%}><a href="../dll/{{ dll_part.dll.path|urlencode_strict }}">{{ dll_part.dll.path }}</a>{%
+  if dll_part.dll.secondary_platform
+%} (secondary platform){%
+  endif
+%}
+{%- if dll_part.oses.len() > 0 %}
+(
+  {%- for os in dll_part.oses -%}
+    {%- if !loop.first -%}{{ ", " }}{%- endif -%}
+    {%- call macros::output_os(os, "../", true) -%}
+  {%- endfor -%}
+)
+{%- endif %}</li>
+{% endfor %}
+</ul>
+
+{% endblock %}

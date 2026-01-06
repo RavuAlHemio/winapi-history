@@ -15,6 +15,15 @@
 {%- endfor -%}
 </p>
 
+<h2>By DLL</h2>
+
+<p>
+{%- for dll_start in dll_start_chars -%}
+{%- if !loop.first -%}{{ " &middot; "|safe }}{%- endif -%}
+<a href="dlls/{{ dll_start|urlencode_strict }}">{{ dll_start }}</a>
+{%- endfor -%}
+</p>
+
 <h2>By Function Name</h2>
 
 <p>
